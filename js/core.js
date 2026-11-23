@@ -432,8 +432,13 @@ window.BA = (() => {
     fadeDir = 1;
   }
   function next() { go(cur + 1); }
+  // 처음부터 다시 — 상태 초기화는 장면이 실제로 바뀌는 순간에 한다.
+  // (먼저 지우면, 화면이 어두워지는 동안 떠나는 장면이 비어 버린 상태를 읽다가 멈춘다)
+  let onSwap = null;
+  function restart(after) { pending = 0; fadeDir = 1; onSwap = () => { reset(); if (after) after(); }; }
   function swap() {
     if (scenes[cur] && scenes[cur].exit) scenes[cur].exit();
+    if (onSwap) { const f = onSwap; onSwap = null; f(); }
     cur = pending; pending = null;
     const sc = scenes[cur];
     hudScene.textContent = sc.id;
@@ -512,6 +517,6 @@ window.BA = (() => {
 
   function start(i) { pending = i || 0; fade = 1; fadeDir = 1; requestAnimationFrame((t) => { last = t; frame(t); }); }
 
-  Object.assign(BA, { T, Btn, clear, inRect, garble, setFont, drawShip, drawYeast, Stars, say, hush, sys, hint, add, go, next, reset, start, scenes, curIndex: () => cur, scene: () => scenes[cur] });
+  Object.assign(BA, { T, Btn, clear, inRect, garble, setFont, drawShip, drawYeast, Stars, say, hush, sys, hint, add, go, next, reset, restart, start, scenes, curIndex: () => cur, scene: () => scenes[cur] });
   return BA;
 })();

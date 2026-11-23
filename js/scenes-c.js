@@ -345,7 +345,7 @@
           if (Btn("[ 나도 탑승하기 ▶ ]", W / 2 + 70 * U, by, { size: 14 })) {
             BA.sharedRecipe = null;
             try { history.replaceState(null, "", location.href.split("#")[0]); } catch (_) {}
-            BA.reset(); BA.go(0);
+            BA.restart();
           }
         } else {
           if (Btn(this.copied > 0 ? "복사됨 ✓" : "공유 링크 복사", W / 2 - 20 * U, by, { size: 13 })) this.copy();
@@ -399,7 +399,7 @@
       ctx.fillStyle = "rgba(8,8,8,0.6)"; ctx.fillRect(0, H - 170, W, 122);
       T("공연은 당신의 부엌에서 계속된다.", W / 2, H - 148, { size: 15, bold: true, color: C.white });
       T(this.none ? "당신이 이곳의 첫 번째 체험자 효모입니다." : "지금까지 " + this.total + "명의 효모가 다녀갔습니다." + (BA.Log.remote ? "" : " (이 기기 기록)"), W / 2, H - 122, { size: 11, color: C.green });
-      if (this.t > 3 && Btn("↺ 처음으로", W / 2, H - 86, { size: 13 })) { BA.hush(); BA.reset(); BA.go(0); }
+      if (this.t > 3 && Btn("↺ 처음으로", W / 2, H - 86, { size: 13 })) { BA.hush(); BA.restart(); }
     },
   });
 })();

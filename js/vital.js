@@ -343,7 +343,7 @@
         BA.go(BA.curIndex());
       }
       if (Btn("처음부터 다시 탑승", noRev ? W / 2 : W / 2 + 170 * U, by, { size: 13, color: C.red })) {
-        BA.reset(); shownHp = 100; BA.dead = 0; drainAcc = 0; BA.go(0);
+        BA.restart(() => { shownHp = 100; BA.dead = 0; drainAcc = 0; });
       }
     }
   }
