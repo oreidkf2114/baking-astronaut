@@ -32,7 +32,7 @@
   BA.Cam = Cam;
 
   // ───── face → 48×48 만화 도트 ────────────────────────────
-  // 반환값 = 밝기 격자(Float32Array, 영수증·카드용) + .q(RGBA 만화 도트: 색은 살리되 톤을 5단으로 끊고 윤곽에 잉크 선)
+  // 반환값 = 밝기 격자(Float32Array, 영수증·카드용) + .q(RGBA 만화 도트: 흑백, 톤을 5단으로 끊고 윤곽에 잉크 선)
   const sc = document.createElement("canvas"); sc.width = sc.height = G;
   const sx = sc.getContext("2d", { willReadFrequently: true });
   const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], TONES = 5, EDGE = 1.0;
@@ -79,7 +79,7 @@
       ln[i] = Math.pow(clamp((raw[i] - lo) / span, 0, 1), 0.85);
       out[i] = ln[i] * m[i];
     }
-    out.q = toon(ln, m, d);
+    out.q = toon(ln, m, null);                              // 흑백 — 작품의 무채색 화면에 맞춘다
     return out;
   }
   // 카메라 없이 탑승할 때의 기본 승무원 (헬멧)
@@ -197,12 +197,29 @@
   }
   BA.drawAstro = drawAstro;
 
+  // ───── 난이도 ─────────────────────────────────────────────
+  //   dmg 피해 배율 · pass/dur 물레 합격선·제한 시간 · need/hz 수축 항해의 필요 신호 수·오염체 빈도
+  //   어려움: 물레 2회(1차 마우스 → 2차 손 인식), 재조립·SKIP 불가
+  BA.DIFFS = [
+    { id: "easy", name: "쉬움", dmg: 0.6, pass: 55, dur: 110, need: 8, hz: 0.6,
+      lines: ["피해 ×0.6", "물레 합격선 55% · 110초", "수축 항해 신호 8개", "쓰러져도 그 자리에서 재조립"] },
+    { id: "normal", name: "보통", dmg: 1, pass: 65, dur: 90, need: 10, hz: 1,
+      lines: ["피해 ×1", "물레 합격선 65% · 90초", "수축 항해 신호 10개", "쓰러져도 그 자리에서 재조립"] },
+    { id: "hard", name: "어려움", dmg: 1.4, pass: 75, dur: 75, need: 14, hz: 2, rounds: 2, pass2: 70, dur2: 100, noRevive: true, noSkip: true,
+      lines: ["피해 ×1.4 · 재조립·SKIP 불가", "수축 항해: 오염체 2배 · 난기류", "물레 2회: 마우스 75% → 손 인식 70%", "성공하면 제작자에게 알릴 수 있음"] },
+  ];
+  BA.diff = 1;
+  Object.defineProperty(BA, "D", { get() { return BA.DIFFS[BA.diff] || BA.DIFFS[1]; } });
+  // 어려움 모드를 건너뛰기·재조립 없이 끝까지 통과했는가
+  BA.hardClear = () => BA.D.id === "hard" && !BA.S.skipped && !BA.S.deaths;
+
   // ───── VITAL ───────────────────────────────────────────────
   let hitT = 0, shownHp = 100, beatT = 0, drainAcc = 0;
   const Vital = {
     damage(n, reason) {
       const S = BA.S;
       if (BA.dead || S.hp <= 0) return;
+      n *= BA.D.dmg;
       S.hp = Math.max(0, S.hp - n); S.log = reason + "  −" + Math.round(n);
       hitT = 0.6;
       BA.fx.shake(10 + n * 0.6); BA.fx.glitch(0.25 + n * 0.012); BA.fx.flash("232,57,42", 0.28);
@@ -276,6 +293,7 @@
     if (S.hp >= 90 && Math.sin(time * 3) > 0.3) T("✦", fx0 + fs - 8 * U, fy0 + 9 * U, { size: 10, color: C.green });
     const tx = x + fs + pad * 2;
     T(S.name, tx, y + pad + 7 * U, { size: 11, align: "left", bold: true, color: C.text });
+    T(BA.D.name, tx + tw, y + pad + 7 * U, { size: 9, align: "right", color: BA.D.id === "hard" ? C.red : C.dim });
     T("VITAL", tx, y + pad + 24 * U, { size: 9, align: "left", color: C.dim });
     T(String(Math.round(shownHp)).padStart(3, "0"), tx + tw, y + pad + 24 * U, { size: 12, align: "right", bold: true, color: col });
     const by = y + pad + 32 * U, seg = 10, sw = (tw - (seg - 1) * 2) / seg;
@@ -317,12 +335,14 @@
     T("사망 " + S.deaths + "회", W / 2, yy + 88 * U, { size: 10, color: C.ghost, alpha: (k - 1.6) / 0.6 });
     if (k > 2.8) {
       const by = Math.min(H - 90, yy + 136 * U);
-      if (Btn("[ 이 장면에서 재조립 · VITAL 50 ]", W / 2 - 150 * U, by, { size: 13 })) {
+      const noRev = BA.D.noRevive;
+      if (noRev) T("어려움 모드 — 재조립 없음", W / 2, by - 34 * U, { size: 11, color: C.amber });
+      if (!noRev && Btn("[ 이 장면에서 재조립 · VITAL 50 ]", W / 2 - 150 * U, by, { size: 13 })) {
         S.hp = 50; S.log = "재조립 완료"; shownHp = 0; BA.dead = 0; drainAcc = 0;
         Snd.chord([196, 262, 330], 0.06); BA.fx.flash("216,216,216", 0.4);
         BA.go(BA.curIndex());
       }
-      if (Btn("처음부터 다시 탑승", W / 2 + 170 * U, by, { size: 13, color: C.red })) {
+      if (Btn("처음부터 다시 탑승", noRev ? W / 2 : W / 2 + 170 * U, by, { size: 13, color: C.red })) {
         BA.reset(); shownHp = 100; BA.dead = 0; drainAcc = 0; BA.go(0);
       }
     }

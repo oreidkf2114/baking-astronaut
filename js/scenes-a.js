@@ -30,7 +30,32 @@
       else this.msg = BA.Cam.err + " — 스캔 없이 탑승할 수 있습니다";
     },
     // 탑승 — 캐릭터가 우주선 아래로 걸어가 빛기둥을 타고 올라간 뒤 다음 장면으로
-    board() { if (this.leave) return; Snd.init(); Snd.chord([220, 330, 440]); nameInput.blur(); this.leave = 0.001; sys("탑승 수속 완료. 탑승자를 끌어올린다."); },
+    //   먼저 난이도를 고른다
+    board() {
+      if (this.leave) return;
+      Snd.init();
+      if (this.mode !== "diff") { this.prev = this.mode; this.mode = "diff"; nameBox.hidden = true; nameInput.blur(); Snd.blip(440, 0.12, "square", 0.05); sys("난이도 선택."); return; }
+    },
+    pick(i) {
+      BA.diff = i; this.mode = this.prev; sys("난이도 · " + BA.D.name);
+      this.depart();
+    },
+    pickUI() {
+      const { W, H, U } = BA, cw = Math.min(250 * U, W * 0.29), ch = 196 * U, gap = 14 * U, x0 = W / 2 - (cw * 3 + gap * 2) / 2, y0 = H * 0.36;
+      T("난이도를 고르세요", W / 2, H * 0.3, { size: 17, bold: true, color: C.white });
+      BA.DIFFS.forEach((d, i) => {
+        const x = x0 + i * (cw + gap), hov = BA.inRect(P.x, P.y, x, y0, cw, ch), col = i === 0 ? C.green : i === 1 ? C.white : C.red;
+        if (hov) BA.hot = true;
+        ctx.fillStyle = hov ? "rgba(216,216,216,0.1)" : "rgba(8,8,8,0.85)"; ctx.fillRect(x, y0, cw, ch);
+        ctx.strokeStyle = col; ctx.lineWidth = hov ? 2 : 1; ctx.strokeRect(x + 0.5, y0 + 0.5, cw, ch); ctx.lineWidth = 1;
+        T("LV " + (i + 1), x + cw / 2, y0 + 22 * U, { size: 10, color: C.dim });
+        T(d.name, x + cw / 2, y0 + 52 * U, { size: 24, bold: true, color: col });
+        d.lines.forEach((l, k) => T(l, x + cw / 2, y0 + (92 + k * 24) * U, { size: W < 900 ? 9 : 11, color: k === 3 && i === 2 ? C.amber : C.text }));
+        if (hov && P.click) this.pick(i);
+      });
+      if (Btn("◀ 뒤로", W / 2, y0 + ch + 46 * U, { size: 12 })) { this.mode = this.prev; nameBox.hidden = false; }
+    },
+    depart() { Snd.init(); Snd.chord([220, 330, 440]); nameInput.blur(); this.leave = 0.001; sys("탑승 수속 완료. 탑승자를 끌어올린다."); },
     update(dt) {
       this.t += dt; this.flash = Math.max(0, this.flash - dt * 2); if (this.mode === "cam") this.live = BA.sampleFace() || this.live;
       if (this.leave) {
@@ -45,6 +70,7 @@
       stars.draw(0.5, this.t * 0.01);
       BA.drawShip(W / 2, H * 0.115 + Math.sin(this.t * 1.2) * 4 * U, Math.max(2, Math.round(3 * U)), 2);
       T("BAKING ASTRONAUT", W / 2, H * 0.2, { size: 34, bold: true, color: C.white });
+      if (this.mode === "diff" && !this.leave) { this.pickUI(); return; }
       // 초상
       const fs = Math.min(190 * U, H * 0.27), fx0 = W / 2 - fs / 2, fy0 = H * 0.44 - fs / 2;
       const face = this.mode === "cam" ? this.live : this.mode === "shot" ? BA.face : null;
@@ -295,10 +321,11 @@
   const STEPS = ["HATCH", "CRYO", "G-LOCK", "LIFE", "NAV", "CARGO", "TARGET", "ARMED"];
   const STEP_KO = ["해치 밀폐", "저온 유지", "중력 고정", "생명 유지", "항법 정렬", "화물(밀가루·물)", "목표 군집", "점화 준비"];
   BA.add({
-    id: "launch", mood: "tension", hint: "깜빡이는 스위치를 순서대로 클릭 → LAUNCH 길게 누르기",
-    enter() { this.step = 0; this.hold = 0; this.go = 0; this.err = 0; Snd.drone(46, 0.06, 200); sys("발사 전 시스템 체크 0 / 8. GM 없이 당신이 직접 통과시킨다."); },
+    id: "launch", mood: "tension", hint: "포드 안입니다 · 깜빡이는 스위치를 순서대로 클릭 → LAUNCH 길게 눌러 원심분리기에서 분리",
+    // 앞 장면(원심분리기)의 빛이 걷히면 포드 B 의 내부다. 바깥에서는 원심분리기가 계속 돌고 있다.
+    enter() { this.step = 0; this.hold = 0; this.go = 0; this.err = 0; this.ang = 0; Snd.drone(46, 0.06, 200); say("포드 내부입니다. 분리 전 점검을 시작합니다."); sys("포드 B 내부. 분리 전 시스템 체크 0 / 8."); },
     update(dt) {
-      this.dt = dt;
+      this.dt = dt; this.ang += dt * (this.go ? 9 + this.go * 14 : 9);
       this.err = Math.max(0, this.err - dt);
       if (this.go) {
         this.go += dt; Snd.drone(46 + this.go * 30, 0.1, 200 + this.go * 400);
@@ -312,7 +339,14 @@
       ctx.save();
       clear(0.5);
       stars.draw(this.go ? this.go * 6 : 0.3, 0, 0.6);
-      T("PAGE 1-4 — LAUNCH", W / 2, 96, { size: 13, color: C.dim });
+      // 창밖 — 여전히 도는 원심분리기의 테
+      for (let k = 0; k < 64; k++) {
+        const a = this.ang * 0.5 + (k / 64) * 6.283;
+        T("·:+*#"[k % 5], W / 2 + Math.cos(a) * W * 0.47, H * 0.52 + Math.sin(a) * H * 0.4, { size: 12, color: C.ghost });
+      }
+      T("PAGE 1-4 — POD B / LAUNCH", W / 2, 96, { size: 13, color: C.dim });
+      T("포드 B 내부 · 원심 회전 유지 중", W / 2, 96 + 18 * U, { size: 10, color: C.ghost });
+      BA.drawAstro(ctx, W / 2 - 150 * U, H * 0.22 + 30 * U, Math.max(2, Math.round(3 * U)), {});
       const tm = this.go ? Math.max(0, 3 - Math.floor(this.go)) : 20 - this.step * 2;
       const red = this.go > 0;
       T("T-" + String(tm).padStart(2, "0") + (this.go >= 3 ? " GO" : ""), W / 2, H * 0.22, { size: 64, bold: true, color: red ? (Math.sin(time * 20) > 0 ? C.red : C.white) : C.white });
@@ -346,10 +380,16 @@
         ctx.fillStyle = C.red; ctx.fillRect(x, y, w * clamp(this.hold, 0, 1), h);
         ctx.strokeStyle = C.red; ctx.strokeRect(x + 0.5, y + 0.5, w, h);
         T("LAUNCH — 길게 누르기", W / 2, cy + 1, { size: 17, bold: true, color: C.white });
-        if (this.hold >= 1) { this.go = 0.001; BA.fx.shake(26); BA.fx.flash("232,57,42", 0.25); Snd.noise(3.4, 0.25, 500); Snd.blip(60, 3, "sawtooth", 0.1, 240); sys("점화. 미세 수축 항해 시작."); }
+        if (this.hold >= 1) { this.go = 0.001; BA.fx.shake(26); BA.fx.flash("232,57,42", 0.25); Snd.noise(3.4, 0.25, 500); Snd.blip(60, 3, "sawtooth", 0.1, 240); sys("분리. 미세 수축 항해 시작."); }
       }
       ctx.restore();
-      if (this.go > 2.8) { ctx.fillStyle = "rgba(255,255,255," + clamp((this.go - 2.8) * 1.6, 0, 1) + ")"; ctx.fillRect(0, 0, W, H); }
+      if (this.go > 2.5) {
+        // 화면이 한 점으로 접힌다 — 수축의 시작 (앞 장면의 화이트아웃과 겹치지 않게)
+        const k = clamp((this.go - 2.5) / 0.8, 0, 1), e = k * k * (3 - 2 * k), w = W * (1 - e), h = Math.max(3, H * (1 - e) * (1 - e));
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, W, (H - h) / 2); ctx.fillRect(0, (H + h) / 2, W, (H - h) / 2 + 1); ctx.fillRect(0, 0, (W - w) / 2, H); ctx.fillRect((W + w) / 2, 0, (W - w) / 2 + 1, H);
+        ctx.fillStyle = "rgba(255,255,255," + (e * 0.85).toFixed(2) + ")"; ctx.fillRect((W - w) / 2, (H - h) / 2, w, h);
+      }
     },
     skip() {},
   });
@@ -358,10 +398,11 @@
   const fmtScale = (m) => m >= 1 ? m.toFixed(2) + " m" : m >= 0.01 ? (m * 100).toFixed(1) + " cm" : m >= 0.001 ? (m * 1000).toFixed(2) + " mm" : (m * 1e6).toFixed(m < 1e-5 ? 1 : 0) + " µm";
   BA.fmtScale = fmtScale;
   const PHASES = [[0.15, "boarding"], [0.4, "liftoff"], [0.7, "cruise"], [0.92, "approach"], [1.01, "handoff"]];
-  const NEED = 10, DUR = 36;
+  let NEED = 10; const DUR = 36;
   BA.add({
     id: "space", mood: "space", cursor: "none", hint: "우주선을 움직여 효모 신호(◆)를 모으고 · 붉은 오염체(✕)는 피하세요",
     enter() {
+      NEED = BA.D.need; this.hard = BA.D.id === "hard";
       this.t = 0; this.sx = BA.W / 2; this.sy = BA.H * 0.7; this.sig = []; this.spawn = 3; this.got = 0; this.end = 0; this.pop = []; this.hz = []; this.hzT = 7; this.inv = 0;
       Snd.drone(73, 0.05, 500); say("미세 수축 항해를 시작합니다. 효모의 크기까지 작아집니다."); sys("approach colony " + BA.S.colony + ".");
     },
@@ -370,7 +411,9 @@
       const { W, H, U } = BA;
       this.t += dt;
       const prog = clamp(this.t / DUR, 0, 1);
-      this.sx = lerp(this.sx, clamp(P.x, 40, W - 40), 1 - Math.exp(-dt * 6));
+      // 어려움: 작아질수록 난기류가 선체를 민다
+      const gust = this.hard ? (Math.sin(this.t * 1.3) * 70 + Math.sin(this.t * 3.7) * 30) * U * prog : 0;
+      this.sx = lerp(this.sx, clamp(P.x + gust, 40, W - 40), 1 - Math.exp(-dt * 6));
       this.sy = lerp(this.sy, clamp(P.y, H * 0.3, H - 110), 1 - Math.exp(-dt * 6));
       this.spawn -= dt;
       if (this.spawn <= 0 && prog < 0.93) {
@@ -381,7 +424,7 @@
         s.life += dt / 4.2;
         const k = s.life * s.life;
         s.x = lerp(W / 2, s.tx, k); s.y = lerp(H / 2, s.ty, k);
-        if (!s.dead && s.life > 0.5 && Math.hypot(s.x - this.sx, s.y - this.sy) < 48 * U) {
+        if (!s.dead && s.life > 0.5 && Math.hypot(s.x - this.sx, s.y - this.sy) < (this.hard ? 38 : 48) * U) {
           s.dead = true; this.got++; this.pop.push({ x: s.x, y: s.y, t: 0 });
           BA.fx.burst(s.x, s.y, 26, "160,255,160", 240, 0.7, 3); BA.Vital.heal(2, "신호 동기화");
           Snd.blip(660 + this.got * 60, 0.25, "sine", 0.07);
@@ -392,12 +435,12 @@
       // 오염체(✕) — 닿으면 VITAL 손실. 뒤로 갈수록 자주 온다
       this.hzT -= dt; this.inv = Math.max(0, this.inv - dt);
       if (this.hzT <= 0 && prog < 0.93) {
-        this.hzT = lerp(2.6, 1.0, prog) * (0.7 + R() * 0.6);
-        const aim = R() < 0.6;
+        this.hzT = lerp(2.6, 1.0, prog) * (0.7 + R() * 0.6) / BA.D.hz;
+        const aim = R() < (this.hard ? 0.8 : 0.6);
         this.hz.push({ tx: aim ? this.sx + (R() - 0.5) * 160 * U : W * (0.1 + R() * 0.8), ty: aim ? this.sy + (R() - 0.5) * 120 * U : H * (0.3 + R() * 0.5), life: 0, rot: R() * 6 });
       }
       for (const h of this.hz) {
-        h.life += dt / 3.4;
+        h.life += dt / (this.hard ? 2.8 : 3.4);
         const k = h.life * h.life;
         h.x = lerp(W / 2, h.tx, k); h.y = lerp(H / 2, h.ty, k);
         if (!h.dead && this.inv <= 0 && h.life > 0.62 && h.life < 1.1 && Math.hypot(h.x - this.sx, h.y - this.sy) < 34 * U) {
@@ -443,6 +486,7 @@
       T("MICRO-SHRINK", 24, H * 0.3, { size: 11, align: "left", color: C.dim });
       T(fmtScale(1.7 * Math.pow(5e-6 / 1.7, prog)), 24, H * 0.3 + 26 * U, { size: 26, align: "left", bold: true, color: C.white });
       T("탑승자 크기", 24, H * 0.3 + 50 * U, { size: 10, align: "left", color: C.ghost });
+      if (this.hard) T("난기류 — 선체가 밀린다", 24, H * 0.3 + 68 * U, { size: 10, align: "left", bold: true, color: Math.sin(time * 6) > 0 ? C.red : C.amber });
       T("SIGNAL SYNC", W - 24, H * 0.3, { size: 11, align: "right", color: C.dim });
       T(Math.min(this.got, NEED) + " / " + NEED, W - 24, H * 0.3 + 26 * U, { size: 26, align: "right", bold: true, color: this.got >= NEED ? C.green : C.white });
       T("◆ 받기 · ✕ 피하기", W - 24, H * 0.3 + 50 * U, { size: 10, align: "right", color: C.ghost });

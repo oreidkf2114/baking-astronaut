@@ -503,6 +503,8 @@ window.BA = (() => {
     Snd.init();
     if (pending != null || BA.dead) return;
     const sc = scenes[cur];
+    if (BA.D && BA.D.noSkip && sc && sc.id !== "idle" && sc.id !== "credits" && sc.id !== "recipe" && sc.id !== "bake") { sys("어려움 모드에서는 SKIP 할 수 없습니다."); return; }
+    if (sc && sc.id !== "idle") BA.S.skipped = true;
     if (sc && sc.skip) sc.skip();
     hush();
     next();

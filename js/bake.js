@@ -158,7 +158,7 @@
       const S = BA.S;
       if (!S.recipe) { if (!S.tg) S.tg = BA.pickTarget(); if (!S.vessel) S.vessel = { name: S.tg.name, score: 0, profile: S.tg.profile }; S.recipe = BA.makeRecipe(S); }
       this.r = S.recipe; this.x = BA.expandRecipe(this.r);
-      this.t = 0; this.phase = "insert"; this.pt = 0; this.bake = 0; this.cut = false; this.cutK = 0; this.sending = false; this.blob = null; this.msg = ""; this.msgT = 0; this.words = []; this.wT = 0;
+      this.t = 0; this.phase = "insert"; this.pt = 0; this.bake = 0; this.cut = false; this.cutK = 0; this.sending = false; this.told = false; this.blob = null; this.msg = ""; this.msgT = 0; this.words = []; this.wT = 0;
       this.card = { x: BA.W / 2, y: BA.H * 0.74, drag: false, in: 0 };
       this.scents = [BASE_SCENT[this.x.base.id] || "갓 구운 밀"].concat(this.x.adds.map((a) => SCENT[a.id]).filter(Boolean)).concat(["새콤한 르뱅"]);
       Snd.drone(82, 0.04, 420);
@@ -215,6 +215,18 @@
         .concat(x.addLines.map((a) => a[0] + "  " + a[1]), [""], x.steps, ["", "레시피 카드 열기: " + BA.shareUrl(this.r), "", "(방금 저장된 JPG를 이 메일에 첨부해 주세요)"]).join("\n");
       window.location.href = "mailto:" + encodeURIComponent(to) + "?subject=" + encodeURIComponent("[Baking Astronaut] " + x.name) + "&body=" + encodeURIComponent(body);
       this.note("JPG를 저장하고 메일 작성 창을 열었습니다 — 저장된 사진을 첨부해 보내세요.");
+    },
+    // 어려움 모드 성공자 — 적은 주소와 빵 사진을 제작자에게 보낸다 (제작자가 축하 연락을 준다)
+    async notify() {
+      const from = mailInput.value.trim();
+      if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]{2,}$/.test(from)) { mailInput.focus(); return this.note("연락받을 이메일 주소를 먼저 적어 주세요."); }
+      if (!this.blob) return this.note("이미지를 만드는 중입니다. 잠시 후 다시 눌러 주세요.");
+      if (this.sending || this.told) return;
+      if (!(BA.Log && BA.Log.remote)) return this.note("제작자 연락 서버가 아직 연결되지 않았습니다.");
+      this.sending = true; this.note("제작자에게 보내는 중…");
+      const ok = await BA.Log.clear(from, this.blob, { n: this.r.n, r: this.x.name, url: BA.shareUrl(this.r), note: BA.S.noHands ? "2차 물레: 카메라 없이 마우스 대체" : "2차 물레: 손 인식" });
+      this.sending = false; this.told = ok;
+      this.note(ok ? "제작자에게 전달했습니다. 축하 연락을 기다려 주세요." : "전달에 실패했습니다. 잠시 후 다시 눌러 주세요.");
     },
     exit() { mailBox.hidden = true; },
     update(dt) {
@@ -333,8 +345,14 @@
             this.makeBlob();
           }
           if (Btn("엔딩 크레딧 ▶", W / 2 + 120 * U, y1, { size: 12 })) BA.next();
-          if (Btn(this.sending ? "보내는 중…" : "[ 이메일로 사진 보내기 ]", W / 2 - 80 * U, y2, { size: 13, color: C.green })) this.send();
-          if (Btn("JPG 저장", W / 2 + 130 * U, y2, { size: 12 })) this.save();
+          const star = BA.hardClear(), off = star ? 110 * U : 0;
+          if (Btn(this.sending ? "보내는 중…" : "[ 이메일로 사진 보내기 ]", W / 2 - 80 * U - off, y2, { size: 13, color: C.green })) this.send();
+          if (Btn("JPG 저장", W / 2 + 130 * U - off, y2, { size: 12 })) this.save();
+          if (star) {
+            T("★ 어려움 모드 성공 ★", W / 2, 96 + 26 * U, { size: 16, bold: true, color: C.amber });
+            T("이메일을 적고 [제작자에게 알리기]를 누르면, 그 주소와 빵 사진이 제작자에게 전달되어 축하 연락을 받습니다.", W / 2, 96 + 48 * U, { size: 10, color: C.dim });
+            if (Btn(this.told ? "✓ 제작자에게 전달됨" : "[ ★ 제작자에게 알리기 ]", W / 2 + 190 * U, y2, { size: 13, color: C.amber, disabled: this.told })) this.notify();
+          }
           if (this.msgT > 0) T(this.msg, W / 2, y1 - 30 * U, { size: 11, color: C.amber, alpha: this.msgT });
         }
       }

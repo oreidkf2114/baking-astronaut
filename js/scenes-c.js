@@ -366,7 +366,7 @@
       const past = Log.players.slice(0, -1).reverse().slice(0, 40);   // 방금 기록한 나를 뺀, 최근 순
       const roster = [{ role: "플레이어 효모", name: "[ " + BA.S.name + " ]", g: true, me: true }]
         .concat(STAFF.map(([role, name]) => ({ role, name: "[ " + name + " ]", g: true })))
-        .concat(past.map((p) => { const d = new Date(p.ts); return { role: "체험자 효모" + (p.ts ? " · " + z(d.getMonth() + 1) + "." + z(d.getDate()) : ""), name: "[ " + p.n + " ]", sub: p.r }; }));
+        .concat(past.map((p) => { const d = new Date(p.ts); return { role: (p.m === "hard" ? "★ 어려움 성공 효모" : "체험자 효모") + (p.ts ? " · " + z(d.getMonth() + 1) + "." + z(d.getDate()) : ""), name: "[ " + p.n + " ]", sub: p.r }; }));
       const gap = Math.max(210, W * 0.17);
       this.y = roster.map((c, i) => ({
         ...c, x: W * 0.12 + i * gap, y: 150 + R() * Math.max(60, H - 420),
