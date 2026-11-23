@@ -245,12 +245,14 @@
       if (this.board) {
         // 점점 빨라지다가 → 빛의 터널 → 화면이 하얗게 타오르며 다음 환경으로
         const was = this.board; this.board += dt; this.w = Math.min(46, this.w + dt * (2.5 + this.board * 3.2));
-        Snd.drone(58 + this.w * 7, 0.07, 240 + this.w * 70);
+        Snd.drone(58 + this.w * 1.5, 0.06, 240 + this.w * 24);
         if (this.board > 2.2) BA.fx.shake((this.board - 2.2) * 5);
-        if (was < 3 && this.board >= 3) { Snd.blip(180, 3, "sawtooth", 0.05, 1900); Snd.noise(3, 0.1, 1800); BA.fx.glitch(0.4); sys("분리 가속. 상태가 물질에서 떨어져 나온다."); }
+        if (was < 3 && this.board >= 3) { Snd.blip(420, 3, "sine", 0.06, 3400); Snd.blip(630, 3, "sine", 0.03, 5100); BA.fx.glitch(0.4); sys("분리 가속. 상태가 물질에서 떨어져 나온다."); }
         if (this.board > 6 && !this.out) { this.out = true; BA.fx.flash("255,255,255", 1); Snd.chord([523, 784, 1047], 0.07); BA.next(); }
       }
-      this.ang += this.w * dt;
+      // 포드가 지나갈 때마다 째깍 — 회전이 빨라질수록 촘촘해지고 높아진다
+      const pa = this.ang; this.ang += this.w * dt; this.tick = (this.tick || 0) - dt;
+      if (this.board && this.tick <= 0 && Math.floor(pa / 1.0472) !== Math.floor(this.ang / 1.0472)) { this.tick = 0.045; Snd.blip(700 + this.w * 45, 0.035, "triangle", 0.04, null, false); }
     },
     render() {
       const { W, H, U, time } = BA;
@@ -281,7 +283,7 @@
           if (hov) BA.hot = true;
           T(this.board ? "[ ]" : "[B]", px, py, { size: 22, bold: true, color: this.board ? C.green : ready ? (blink || hov ? C.white : C.dim) : C.dim });
           if (ready) { ctx.strokeStyle = hov ? C.white : C.ghost; ctx.beginPath(); ctx.arc(px, py, 34 * U, 0, 6.283); ctx.stroke(); }
-          if (hov && P.click) { this.board = 0.001; Snd.blip(220, 0.5, "sawtooth", 0.06, 880); BA.fx.burst(px, py, 50, "160,255,160", 260, 0.8, 3); BA.fx.glitch(0.3); sys("탑승 확인. 분기 발생."); }
+          if (hov && P.click) { this.board = 0.001; Snd.blip(520, 0.12, "triangle", 0.07); setTimeout(() => Snd.blip(780, 0.18, "triangle", 0.06), 110); BA.fx.burst(px, py, 50, "160,255,160", 260, 0.8, 3); BA.fx.glitch(0.3); sys("탑승 확인. 분기 발생."); }
         } else T("[ ]", px, py, { size: 18, color: C.dim });
       }
       // 탑승자 — 옆에서 기다리다가 포드로 뛰어 들어가 함께 돈다
@@ -328,7 +330,9 @@
       this.dt = dt; this.ang += dt * (this.go ? 9 + this.go * 14 : 9);
       this.err = Math.max(0, this.err - dt);
       if (this.go) {
-        this.go += dt; Snd.drone(46 + this.go * 30, 0.1, 200 + this.go * 400);
+        const was = this.go; this.go += dt; Snd.drone(46 + this.go * 3, 0.12, 150 + this.go * 30);
+        if (Math.floor(was) !== Math.floor(this.go) && this.go < 3.2) Snd.blip(880, 0.12, "square", 0.06, null, false);       // T-3 · 2 · 1
+        if (was < 2.5 && this.go >= 2.5) { Snd.blip(1700, 0.9, "triangle", 0.08, 50); Snd.blip(850, 0.9, "sine", 0.06, 30); }   // 수축 — 음이 떨어진다
         BA.fx.shake(6 + this.go * 5);
         for (let k = 0; k < 3; k++) BA.fx.spark(BA.W * R(), BA.H + 4, (R() - 0.5) * 200, -300 - R() * 500, R() < 0.5 ? "232,120,60" : "216,216,216", 0.7, 3, 0);
         if (this.go > 3.4) BA.next();
@@ -375,12 +379,12 @@
         const cy = gy + rows * (bh + gap) + 46 * U, w = Math.min(360 * U, W * 0.8), h = 58 * U, x = W / 2 - w / 2, y = cy - h / 2;
         const hov = BA.inRect(P.x, P.y, x, y, w, h);
         if (hov) BA.hot = true;
-        if (hov && P.down) { this.hold += this.dt / 1.2; if (R() < this.dt * 25) Snd.blip(200 + this.hold * 600, 0.03, "sawtooth", 0.03, null, false); } else this.hold = Math.max(0, this.hold - this.dt * 2);
+        if (hov && P.down) { this.hold += this.dt / 1.2; if (R() < this.dt * 14) Snd.blip(60 + this.hold * 50, 0.07, "square", 0.05, null, false); } else this.hold = Math.max(0, this.hold - this.dt * 2);
         ctx.fillStyle = "rgba(232,57,42,0.25)"; ctx.fillRect(x, y, w, h);
         ctx.fillStyle = C.red; ctx.fillRect(x, y, w * clamp(this.hold, 0, 1), h);
         ctx.strokeStyle = C.red; ctx.strokeRect(x + 0.5, y + 0.5, w, h);
         T("LAUNCH — 길게 누르기", W / 2, cy + 1, { size: 17, bold: true, color: C.white });
-        if (this.hold >= 1) { this.go = 0.001; BA.fx.shake(26); BA.fx.flash("232,57,42", 0.25); Snd.noise(3.4, 0.25, 500); Snd.blip(60, 3, "sawtooth", 0.1, 240); sys("분리. 미세 수축 항해 시작."); }
+        if (this.hold >= 1) { this.go = 0.001; BA.fx.shake(26); BA.fx.flash("232,57,42", 0.25); Snd.blip(95, 0.6, "sine", 0.28, 28); Snd.noise(3.4, 0.32, 170); sys("분리. 미세 수축 항해 시작."); }
       }
       ctx.restore();
       if (this.go > 2.5) {
