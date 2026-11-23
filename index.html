@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Baking Astronaut — Solo v2</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<video id="cam" playsinline muted hidden></video>
+<canvas id="stage"></canvas>
+<canvas id="glow"></canvas>
+<canvas id="fx"></canvas>
+
+<div class="hud-line top"></div>
+<div class="hud-line bottom"></div>
+
+<header class="hud">
+  <div class="col">
+    <div class="row"><span class="label">BAKING ASTRONAUT / SOLO v2</span></div>
+    <div class="row"><span class="label">SCENE</span><span class="value" id="hudScene">idle</span></div>
+    <div class="row"><span class="label">STEP</span><span class="value" id="hudStep">00 / 12</span></div>
+  </div>
+  <div class="col right">
+    <div class="row btns">
+      <button id="btnHand" type="button" class="off">HAND OFF</button>
+      <button id="btnSound" type="button">SOUND ON</button>
+      <button id="btnMusic" type="button">MUSIC ON</button>
+      <button id="btnVoice" type="button">VOICE ON</button>
+      <button id="btnSkip" type="button">SKIP ▶</button>
+    </div>
+    <div class="progress"><div id="progFill"></div></div>
+  </div>
+</header>
+
+<div id="sub" class="sub"></div>
+
+<footer class="footer">
+  <div class="sys" id="sys">&gt; standby.</div>
+  <div class="meta" id="hint">마우스 클릭으로 진행</div>
+</footer>
+
+<div id="nameBox" class="name-box" hidden>
+  <label for="nameInput">탑승자 이름</label>
+  <input id="nameInput" type="text" maxlength="12" placeholder="아스트로넛" autocomplete="off" spellcheck="false">
+</div>
+
+<script src="./js/core.js"></script>
+<script src="./js/fx.js"></script>
+<script src="./js/vital.js"></script>
+<script src="./js/hands.js"></script>
+<script src="./js/recipes.js"></script>
+<script src="./js/scenes-a.js"></script>
+<script src="./js/scenes-b.js"></script>
+<script src="./js/wheel.js"></script>
+<script src="./js/scenes-c.js"></script>
+<script src="./js/bake.js"></script>
+<script>BA.start(BA.sharedRecipe ? BA.scenes.findIndex((s) => s.id === "recipe") : 0);</script>
+</body>
+</html>
