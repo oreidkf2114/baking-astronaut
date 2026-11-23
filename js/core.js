@@ -363,6 +363,22 @@ window.BA = (() => {
     },
   };
   BA.Snd = Snd;
+  // 소리 잠금 해제.
+  // 핸드폰 브라우저(카카오톡 등 앱 안의 브라우저 포함)는 "손가락을 뗀 순간·클릭·키 입력" 안에서만 소리를 허락한다.
+  // 화면을 누르는 순간(pointerdown)에만 켜려 하면 거절되어, 새로고침하기 전까지 소리가 나지 않았다.
+  // → 허락되는 순간마다 다시 깨우고, 무음 한 조각을 흘려 확실히 연다. 전화·앱 전환으로 끊긴 뒤에도 다음 터치에 되살아난다.
+  const unlock = () => {
+    Snd.init();
+    const ac = Snd.ac;
+    if (!ac) return;
+    if (ac.state !== "running") { try { const p = ac.resume(); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+    if (!Snd.unlocked) {
+      try { const s = ac.createBufferSource(); s.buffer = ac.createBuffer(1, 1, 22050); s.connect(ac.destination); s.start(0); } catch (_) {}
+      if (ac.state === "running") Snd.unlocked = true;
+    }
+  };
+  for (const ev of ["pointerup", "touchend", "click", "keydown"]) document.addEventListener(ev, unlock, { capture: true, passive: true });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && Snd.ac && Snd.ac.state !== "running") Snd.unlocked = false; });
 
   // ───── ambient music ───────────────────────────────────────
   // 기본: 브라우저에서 생성되는 앰비언트(패드 + 드문 벨). 파일 불필요.
