@@ -72,6 +72,8 @@
         this.busy = false;
         this.ms = lerp(this.ms || 30, performance.now() - t0, 0.2);
         wait = clamp(this.ms * 0.4, 4, 60);
+        const sc = BA.scene();
+        if (!sc || sc.id !== "wheel") wait = Math.max(wait, 55);      // 물레 밖에서는 포인터용이므로 초당 15회쯤이면 충분하다
       }
       setTimeout(() => this.loop(), wait);
     },
@@ -115,10 +117,15 @@
       const v = BA.Cam.video;
       c.fillStyle = "#050505"; c.fillRect(x, y, w, h);
       if (v.readyState >= 2 && v.videoWidth) {
-        c.save(); c.translate(x + w, y); c.scale(-1, 1);
-        try { c.filter = "grayscale(1) contrast(1.15)"; } catch (_) {}
-        c.globalAlpha = 0.7; c.drawImage(v, 0, 0, w, h);
-        c.restore();
+        // 작은 캔버스에 초당 12회만 옮겨 흑백으로 만든다 (매 프레임 필터를 거는 것보다 훨씬 가볍다)
+        if (!this.pv) { this.pv = document.createElement("canvas"); this.pv.width = 160; this.pv.height = 120; this.pvT = 0; }
+        if (performance.now() - this.pvT > 80) {
+          this.pvT = performance.now();
+          const p = this.pv.getContext("2d");
+          p.globalCompositeOperation = "source-over"; p.setTransform(-1, 0, 0, 1, 160, 0); p.drawImage(v, 0, 0, 160, 120); p.setTransform(1, 0, 0, 1, 0, 0);
+          p.globalCompositeOperation = "saturation"; p.fillStyle = "#808080"; p.fillRect(0, 0, 160, 120);
+        }
+        c.globalAlpha = 0.7; c.drawImage(this.pv, x, y, w, h); c.globalAlpha = 1;
       }
       if (band) {                                               // 이 띠 안에서 빚는다
         c.fillStyle = "rgba(160,255,160,0.08)"; c.fillRect(x, y + h * band[0], w, h * (band[1] - band[0]));

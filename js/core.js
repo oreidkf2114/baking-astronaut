@@ -7,7 +7,7 @@ window.BA = (() => {
 
   const cv = document.getElementById("stage");
   const ctx = cv.getContext("2d");
-  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
   const FONT = '"Courier New","D2Coding","Malgun Gothic","Apple SD Gothic Neo",monospace';
 
   const C = {
@@ -31,6 +31,7 @@ window.BA = (() => {
   function resize() {
     BA.W = window.innerWidth;
     BA.H = window.innerHeight;
+    if (BA.lite) DPR = 1;
     cv.width = Math.floor(BA.W * DPR);
     cv.height = Math.floor(BA.H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -152,30 +153,45 @@ window.BA = (() => {
     walk: ["..o.o.o..", "...WWWW..", ".oWWWWWWo", ".WWWWWWW.", "oWWWWWWWo", ".WWWWWWW.", "oWWWWWWWo", "..WWWWWW.", "...WWWW..", ".o.o.o.o."],
     bud: ["..o.o.o.o...", "...WWWW.....", ".oWWWWWWo.o.", ".WWWWWWW.WW.", "oWWWWWWWoWWo", ".WWWWWWW.WW.", "oWWWWWWWo.o.", "..WWWWWW....", "...WWWW.....", "..o.o.o.o..."],
   };
-  // (x, y) = 스프라이트 중심
-  function drawYeast(kind, x, y, scale, color, glow, alpha) {
-    const grid = YEAST[kind] || YEAST.idle;
-    const ox = x - (9 * scale) / 2, oy = y - (grid.length * scale) / 2;
-    ctx.globalAlpha = alpha == null ? 1 : clamp(alpha, 0, 1);
-    if (glow) { ctx.shadowColor = color; ctx.shadowBlur = 18; }
-    ctx.fillStyle = color;
+  // (x, y) = 스프라이트 중심.
+  // 효모 한 마리는 원 60여 개 + 번짐이라, 매 프레임 새로 그리면 효모가 많은 장면(선물·크레딧)이 무거워진다.
+  // 모양·크기·색마다 한 번만 그려 작은 캔버스에 구워 두고 찍어 쓴다.
+  const yeastCache = new Map();
+  function yeastSprite(kind, scale, color, glow) {
+    const key = kind + "|" + scale + "|" + color + "|" + (glow ? 1 : 0);
+    let sp = yeastCache.get(key);
+    if (sp) return sp;
+    const grid = YEAST[kind] || YEAST.idle, cols = Math.max(...grid.map((l) => l.length)), pad = glow ? 26 : 2;
+    sp = document.createElement("canvas");
+    sp.width = Math.ceil(cols * scale + pad * 2); sp.height = Math.ceil(grid.length * scale + pad * 2); sp.pad = pad;
+    const c = sp.getContext("2d");
+    if (glow) { c.shadowColor = color; c.shadowBlur = 18; }
+    c.fillStyle = color;
     for (let r = 0; r < grid.length; r++) {
       const line = grid[r];
-      for (let c = 0; c < line.length; c++) {
-        const ch = line[c];
+      for (let q = 0; q < line.length; q++) {
+        const ch = line[q];
         if (ch === ".") continue;
-        ctx.beginPath();
-        ctx.arc(ox + c * scale + scale / 2, oy + r * scale + scale / 2, (scale * (ch === "W" ? 1 : 0.55)) / 2, 0, Math.PI * 2);
-        ctx.fill();
+        c.beginPath();
+        c.arc(pad + q * scale + scale / 2, pad + r * scale + scale / 2, (scale * (ch === "W" ? 1 : 0.55)) / 2, 0, Math.PI * 2);
+        c.fill();
       }
     }
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = C.bg;
+    c.shadowBlur = 0;
+    c.fillStyle = C.bg;
     for (const ec of [2, 6]) {
-      ctx.beginPath();
-      ctx.arc(ox + ec * scale + scale / 2, oy + 4 * scale + scale / 2, scale * 0.25, 0, Math.PI * 2);
-      ctx.fill();
+      c.beginPath();
+      c.arc(pad + ec * scale + scale / 2, pad + 4 * scale + scale / 2, scale * 0.25, 0, Math.PI * 2);
+      c.fill();
     }
+    if (yeastCache.size > 120) yeastCache.clear();
+    yeastCache.set(key, sp);
+    return sp;
+  }
+  function drawYeast(kind, x, y, scale, color, glow, alpha) {
+    const sc = Math.max(1, Math.round(scale * 2) / 2), grid = YEAST[kind] || YEAST.idle, sp = yeastSprite(kind, sc, color, glow);
+    ctx.globalAlpha = alpha == null ? 1 : clamp(alpha, 0, 1);
+    ctx.drawImage(sp, Math.round(x - (9 * sc) / 2 - sp.pad), Math.round(y - (grid.length * sc) / 2 - sp.pad));
     ctx.globalAlpha = 1;
   }
 
@@ -420,7 +436,7 @@ window.BA = (() => {
 
   // ───── scene manager ───────────────────────────────────────
   const scenes = [];
-  let cur = -1, pending = null, fade = 1, fadeDir = -1, last = 0;
+  let cur = -1, pending = null, fade = 1, fadeDir = -1, last = 0, slow = 0.016, slowT = 0;
   const hudScene = document.getElementById("hudScene");
   const hudStep = document.getElementById("hudStep");
   const progFill = document.getElementById("progFill");
@@ -454,8 +470,16 @@ window.BA = (() => {
   function frame(now) {
     // 창이 최소화되어 크기가 0이면 그리지 않고 기다린다
     if (BA.W < 2 || BA.H < 2) { last = now; requestAnimationFrame(frame); return; }
-    const dt = Math.min(0.05, (now - last) / 1000 || 0.016);
+    // 60fps 상한 — 144·240Hz 모니터에서 같은 화면을 서너 번씩 그리지 않는다 (그만큼 GPU 가 손 인식에 쓰인다)
+    if (now - last < 13) { requestAnimationFrame(frame); return; }
+    const raw = (now - last) / 1000 || 0.016, dt = Math.min(0.05, raw);
     last = now;
+    // 계속 느리면(약 38fps 아래로 3초) 가벼운 모드로 — 블룸을 끄고 해상도 배율을 1로 낮춘다. 한번 켜지면 유지.
+    if (!BA.lite && raw < 0.25) {
+      slow += (raw - slow) * 0.04;
+      slowT = slow > 0.026 && BA.time > 6 ? slowT + raw : 0;
+      if (slowT > 3) { BA.lite = true; window.dispatchEvent(new Event("resize")); sys("화면이 느려 가벼운 모드로 전환했습니다."); }
+    }
     BA.time += dt;
     BA.fs = dt * 60;
     if (fadeDir > 0) {
@@ -497,6 +521,7 @@ window.BA = (() => {
   const bMusic = document.getElementById("btnMusic");
   bMusic.addEventListener("click", () => {
     Snd.init(); Music.setOn(!Music.on);
+    if (BA.Chip) BA.Chip.sync();
     bMusic.textContent = Music.on ? "MUSIC ON" : "MUSIC OFF"; bMusic.classList.toggle("off", !Music.on);
   });
   bVoice.addEventListener("click", () => {

@@ -241,14 +241,15 @@
         T("초록 띠 안 = 빚는 높이 · 한 손으로도 됩니다", W - 24 - pw / 2, H * 0.22 + pw * 0.75 + 30 * U, { size: 9, color: C.dim });
         if (Btn("[ 손으로 빚기 시작 ▶ ]", W / 2, H * 0.72, { size: 16, color: C.green })) this.begin(true);
       } else {
-        if (Btn(hd.loading ? "손 인식 불러오는 중…" : "[ 손 인식 켜기 ]", W / 2, H * 0.72, { size: 16, color: C.green }) && !hd.loading) hd.enable();
+        if (Btn(hd.loading ? "손 인식 불러오는 중…" : "[ 손 인식 켜기 ]", W / 2, H * 0.72, { size: 16, color: C.green }) && !hd.loading) { hd.auto = true; hd.enable(); }
         if (hd.err) {
           T(hd.err, W / 2, H * 0.72 + 40 * U, { size: 11, color: C.amber });
           if (Btn("카메라 없이 마우스로 (합격선 85% · 기록에 표시)", W / 2, H * 0.72 + 76 * U, { size: 11 })) { BA.S.noHands = true; this.begin(true); }
         }
       }
     },
-    exit() { if (BA.Hands) BA.Hands.quiet = false; },
+    // 2차 물레를 위해 켠 손 인식은 물레를 떠날 때 끈다 — 켜 둔 채로 가면 귀환·엔딩까지 내내 추론이 돌아 화면이 버벅인다
+    exit() { const hd = BA.Hands; if (!hd) return; hd.quiet = false; if (hd.auto) { hd.auto = false; hd.disable(); hd.sync(); sys("손 인식 종료."); } },
     // 빚는 동안의 시각효과 — 일치 눈금, 오라, 흙물 고리, 접촉 아크, 손 골격, 카메라 미리보기
     fxRun(g, sN, ok) {
       const { W, H, U, time } = BA, hd = BA.Hands, hs = !this.mouseOnly && hd && hd.on ? hd.list : [], con = this.con, tg = this.g.profile;
@@ -275,20 +276,20 @@
       // 손(또는 마우스)이 닿은 높이 — 점토 표면으로 튀는 아크
       if (con) {
         const cr = this.p[clamp(Math.round((g.bot - con.y) / g.h * N - 0.5), 0, N - 1)] * g.scale, hand = hs.length > 0;
-        ctx.strokeStyle = hand ? "rgba(160,255,160,0.9)" : "rgba(255,190,110,0.85)"; ctx.lineWidth = 1.5; ctx.shadowColor = hand ? C.green : "#ffb060"; ctx.shadowBlur = 12;
+        ctx.strokeStyle = hand ? "rgba(160,255,160,0.9)" : "rgba(255,190,110,0.85)"; ctx.lineWidth = 2;
         for (const sd of [-1, 1]) {
           const x0 = g.cx + sd * (con.r + 14), x1 = g.cx + sd * cr;
           ctx.beginPath(); ctx.moveTo(x0, con.y);
           for (let j = 1; j <= 5; j++) ctx.lineTo(lerp(x0, x1, j / 5), con.y + (j < 5 ? (R() - 0.5) * 16 * U : 0));
           ctx.stroke();
         }
-        ctx.shadowBlur = 0; ctx.lineWidth = 1;
+        ctx.lineWidth = 1;
         if (R() < 0.5) BA.fx.spark(g.cx + (R() < 0.5 ? -1 : 1) * cr, con.y, (R() - 0.5) * 60, -60 - R() * 120, hand ? "160,255,160" : "255,190,110", 0.6, 2, 120);
       }
       if (!hs.length) return;
       // 손 골격을 점토 양옆에 띄운다 (빚는 높이에 맞춰)
       const cy0 = con ? con.y : null, rr0 = con ? con.r : g.scale * 0.5, S = g.h * 1.25;
-      ctx.lineWidth = 2; ctx.shadowColor = C.green; ctx.shadowBlur = con ? 14 : 4;
+      ctx.lineWidth = 2;
       hs.forEach((h, idx) => {
         const side = hs.length === 2 ? (h === hd.two()[0] ? -1 : 1) : (h.nx < 0.5 ? -1 : 1);
         let px = 0, py = 0; for (const i of [0, 5, 9, 13, 17]) { px += h.npts[i].x; py += h.npts[i].y; } px /= 5; py /= 5;
@@ -298,7 +299,7 @@
         ctx.stroke();
         if (hs.length === 1) { ctx.globalAlpha = 0.25; ctx.beginPath(); for (const [p, q] of hd.BONES) { ctx.moveTo(g.cx - side * (rr0 + 54 * U) - (h.npts[p].x - px) * S, ay + (h.npts[p].y - py) * S * 0.75); ctx.lineTo(g.cx - side * (rr0 + 54 * U) - (h.npts[q].x - px) * S, ay + (h.npts[q].y - py) * S * 0.75); } ctx.stroke(); ctx.globalAlpha = 1; }   // 한 손이면 반대편에 거울 손
       });
-      ctx.shadowBlur = 0; ctx.lineWidth = 1;
+      ctx.lineWidth = 1;
       // 카메라 미리보기
       const pw = Math.min(190 * U, W * 0.2), px0 = W - 24 - pw, py0 = H * 0.22 + 96 * U, n = hd.seen();
       hd.preview(ctx, px0, py0, pw, pw * 0.75, [HY0, HY1]);

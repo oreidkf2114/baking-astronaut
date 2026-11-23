@@ -110,6 +110,18 @@
       c.fillRect(lx - size * 0.42, baseY, size * 0.42, Math.max(2, cell * 0.8));
     } else { c.fillStyle = "rgba(0,0,0,0.45)"; c.fillRect(cx - size * 0.42, baseY, size * 0.84, Math.max(2, cell * 0.8)); }   // 바닥 그림자
   }
+  // 빵은 5천 칸 안팎의 도트다. 값이 바뀔 때만 다시 굽고, 그 사이에는 구워 둔 그림을 찍는다.
+  const breadCv = document.createElement("canvas");
+  let breadKey = "";
+  function breadFast(c, r, x, cx, baseY, size, o) {
+    const sz = Math.round(size), bake = Math.round(o.bake * 80) / 80, rise = Math.round((o.rise == null ? 1 : o.rise) * 50) / 50, cut = Math.round((+o.cut || 0) * 30) / 30;
+    const key = [r.ts, r.s, sz, bake, rise, cut].join("|"), w = Math.ceil(sz * 1.7), h = Math.ceil(sz * 0.75);
+    if (key !== breadKey) {
+      breadKey = key; breadCv.width = w; breadCv.height = h;
+      drawBread(breadCv.getContext("2d"), r, x, w / 2, h - 6, sz, { bake, rise, cut });
+    }
+    c.drawImage(breadCv, Math.round(cx - w / 2), Math.round(baseY - (h - 6)));
+  }
   BA.drawBread = drawBread;
   BA.breadCard = (st) => cardCanvas(BA.S, st);
 
@@ -291,7 +303,7 @@
         ctx.strokeStyle = "rgba(216,216,216,0.5)"; ctx.strokeRect(wx + 0.5, wy + 0.5, ww, wh);
         if (this.phase === "bake") {
           const rise = clamp(this.pt / 5, 0, 1), wob = Math.sin(time * 30) * heat;                              // 열 아지랑이
-          drawBread(ctx, r, x, g.cx + wob, wy + wh - 8 * U, ww * 0.7, { bake: this.bake, rise: 0.2 + 0.8 * rise });
+          breadFast(ctx, r, x, g.cx + wob, wy + wh - 8 * U, ww * 0.7, { bake: this.bake, rise: 0.2 + 0.8 * rise });
           for (let i = 0; i < 5; i++) { const yy = wy + ((time * 40 + i * 37) % wh); ctx.fillStyle = "rgba(255,200,120,0.06)"; ctx.fillRect(wx, yy, ww, 3); }
         }
         ctx.fillStyle = "rgba(216,216,216,0.5)"; ctx.fillRect(g.ox + g.ow * 0.2, wy + wh + 10 * U, g.ow * 0.6, 5 * U);        // 손잡이
@@ -328,7 +340,7 @@
         lg.addColorStop(0, "rgba(255,210,140," + (0.16 * k).toFixed(3) + ")"); lg.addColorStop(1, "rgba(255,210,140,0)");
         ctx.fillStyle = lg; ctx.fillRect(0, 64, W, H * 0.6);
         drawSteam(ctx, W / 2, baseY - size * 0.36, size * 0.8, H * 0.22, time, k);
-        drawBread(ctx, r, x, W / 2, baseY, size * (1 - 0.12 * this.cutK), { bake: this.bake, rise: 1, cut: this.cutK });
+        breadFast(ctx, r, x, W / 2, baseY, size * (1 - 0.12 * this.cutK), { bake: this.bake, rise: 1, cut: this.cutK });
         for (const w of this.words) {
           const a = Math.sin(clamp(w.t / 4.5, 0, 1) * Math.PI);
           T(w.s, w.x + Math.sin(w.t * 1.3 + w.p) * 18 * U, w.y - w.t * 34 * U, { size: 12, color: "rgba(255,236,200,1)", alpha: a * 0.85 });

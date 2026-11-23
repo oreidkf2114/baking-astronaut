@@ -107,6 +107,17 @@
   function drawFace(c, face, x, y, size, o) {
     o = o || {};
     const cell = size / G, dmg = clamp(o.dmg || 0, 0, 1), dead = o.dead || 0, t = BA.time, k8 = Math.floor(t * 9), q = face.q;
+    // 멀쩡한 초상은 움직이지 않는다 — 2천여 칸을 매 프레임 칠하지 않고, 한 번 구운 것을 찍는다
+    if (q && !o.ink && !dmg && !dead && !o.raw && (face === BA.face || face === defFace)) {
+      const key = Math.round(size) + (o.noBg ? "n" : "b");
+      if (face.bk !== key) {
+        face.bk = key; face.bc = face.bc || document.createElement("canvas");
+        face.bc.width = face.bc.height = Math.round(size) + 2;
+        drawFace(face.bc.getContext("2d"), face, 1, 1, Math.round(size), { noBg: o.noBg, raw: true });
+      }
+      c.drawImage(face.bc, Math.round(x) - 1, Math.round(y) - 1);
+      return;
+    }
     if (!o.noBg) {
       c.fillStyle = o.ink ? "#e9e6dc" : "#0b0b0b"; c.fillRect(x, y, size, size);
       if (!o.ink && size > 60) {                               // 만화 망점 배경

@@ -359,7 +359,7 @@
   // 플레이어 효모 → 만든 효모들 → 그동안 다녀간 체험자 효모들 순으로 지나간다
   const STAFF = [["기획 효모", "유승협 · 여가은"], ["제작 효모", "유승협"], ["2D 디자인 효모", "유승협 · 여가은"], ["사운드 효모", "유승협 · 여가은"]];
   BA.add({
-    id: "credits", mood: "gift", green: true, hint: "효모 승무원들이 지나갑니다 — 그동안 다녀간 체험자 효모들과 함께",
+    id: "credits", mood: "off", green: true, hint: "효모 승무원들이 지나갑니다 — 그동안 다녀간 체험자 효모들과 함께",
     enter() {
       const { W, H } = BA, Log = BA.Log, z = (n) => String(n).padStart(2, "0");
       Log.add(BA.S);                                       // 빵을 건너뛰고 온 경우에도 한 번은 기록한다
@@ -375,11 +375,14 @@
       this.span = roster.length * gap;
       this.total = Log.count; this.none = !past.length;
       this.t = 0;
-      Snd.drone(98, 0.035, 500);
-      sys("yeast crew is dispatched. " + this.total + " yeasts on record.");
+      Snd.drone(98, 0, 500);                               // 엔딩 노래가 흐르므로 배경 지속음은 끈다
+      Snd.init(); BA.Chip.start();
+      sys("♪ 효모 행진곡 · yeast crew is dispatched. " + this.total + " yeasts on record.");
     },
+    exit() { BA.Chip.stop(); },
     update(dt) {
       this.t += dt;
+      if (!BA.Chip.playing) BA.Chip.start();              // 소리가 아직 안 켜져 있었다면 켜지는 대로 시작
       for (const y of this.y) { y.x -= y.v * dt; if (y.x < -240) y.x += Math.max(this.span, BA.W + 480); }
     },
     render() {
@@ -387,6 +390,7 @@
       clear(0.4);
       BA.stars.draw(0.3, 0, 0.5);
       T("ENDING CREDITS", W / 2, 96, { size: 13, color: C.dim });
+      T("♪ 효모 행진곡", W / 2, 96 + 18 * U, { size: 10, color: Math.floor(time * 2.3) % 2 ? C.green : C.dim });
       for (const y of this.y) {
         if (y.x < -240 || y.x > W + 240) continue;
         const yy = y.y + Math.sin(time * 1.4 + y.p) * 8, col = y.g ? C.green : C.white, sc = Math.max(2, Math.round(y.s * U * 0.8));

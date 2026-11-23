@@ -9,11 +9,12 @@
   const stage = document.getElementById("stage");
   const glow = document.getElementById("glow"), g = glow.getContext("2d");
   const fxc = document.getElementById("fx"), f = fxc.getContext("2d");
-  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
   const vig = document.createElement("canvas");
 
   function resize() {
     const W = window.innerWidth, H = window.innerHeight;
+    if (BA.lite) { DPR = 1; glow.style.display = "none"; }
     glow.width = Math.ceil(W / 4); glow.height = Math.ceil(H / 4);
     fxc.width = Math.floor(W * DPR); fxc.height = Math.floor(H * DPR);
     f.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -51,8 +52,7 @@
       const W = BA.W, H = BA.H, U = BA.U;
       BA.shakeAmt = Math.max(0, BA.shakeAmt - dt * 60);
       // bloom source
-      g.clearRect(0, 0, glow.width, glow.height);
-      g.drawImage(stage, 0, 0, glow.width, glow.height);
+      if (!BA.lite) { g.clearRect(0, 0, glow.width, glow.height); g.drawImage(stage, 0, 0, glow.width, glow.height); }
       // 장면별 블룸 세기 (영수증처럼 흰 면이 큰 장면은 약하게)
       const sc = BA.scene(), want = sc && sc.glow != null ? sc.glow : 0.5;
       if (want !== this.glowNow) { this.glowNow = want; glow.style.opacity = want; }

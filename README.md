@@ -81,6 +81,7 @@ solo-v2/
   index.html / style.css      #stage(무대) + #glow(블룸) + #fx(효과) 3겹 캔버스
   js/core.js      엔진 (v1 + 흔들림·사망 시 정지·오버레이 훅·워프 스트릭)
   js/fx.js        시각효과 레이어
+  js/chip.js      엔딩 노래 「효모 행진곡」 (브라우저 합성 8비트)
   js/config.js    서버 주소 (비어 있으면 기기 안에서만 동작)
   js/log.js       체험자 기록 · 메일 발송 요청
   js/vital.js     카메라 · 도트 초상 · VITAL · 상태창 · 사망 화면
