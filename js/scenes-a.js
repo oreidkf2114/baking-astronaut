@@ -14,7 +14,7 @@
   BA.add({
     id: "idle", mood: "idle", hint: "얼굴을 스캔하면 당신이 도트 승무원이 됩니다 · 약 8분 · 소리 켜기 권장",
     enter() {
-      this.t = 0; this.mode = BA.faceIsPhoto ? "shot" : "intro"; this.live = null; this.flash = 0; this.msg = "";
+      this.t = 0; this.mode = BA.faceIsPhoto ? "shot" : "intro"; this.live = null; this.flash = 0; this.msg = ""; this.leave = 0; this.gone = false;
       nameBox.hidden = false; Snd.drone(55, 0.035, 200); sys("standby. 탑승자 신호 대기.");
     },
     exit() {
@@ -29,8 +29,16 @@
       if (await BA.Cam.start()) { this.mode = "cam"; this.msg = ""; }
       else this.msg = BA.Cam.err + " — 스캔 없이 탑승할 수 있습니다";
     },
-    board() { Snd.init(); Snd.chord([220, 330, 440]); BA.fx.shock(BA.W / 2, BA.H * 0.42, "216,216,216", 420); BA.next(); },
-    update(dt) { this.t += dt; this.flash = Math.max(0, this.flash - dt * 2); if (this.mode === "cam") this.live = BA.sampleFace() || this.live; },
+    // 탑승 — 캐릭터가 우주선 아래로 걸어가 빛기둥을 타고 올라간 뒤 다음 장면으로
+    board() { if (this.leave) return; Snd.init(); Snd.chord([220, 330, 440]); nameInput.blur(); this.leave = 0.001; sys("탑승 수속 완료. 탑승자를 끌어올린다."); },
+    update(dt) {
+      this.t += dt; this.flash = Math.max(0, this.flash - dt * 2); if (this.mode === "cam") this.live = BA.sampleFace() || this.live;
+      if (this.leave) {
+        const was = this.leave; this.leave += dt;
+        if (was < 0.9 && this.leave >= 0.9) { Snd.blip(300, 0.9, "sine", 0.07, 1400); BA.fx.shock(BA.W / 2, BA.H * 0.115, "160,255,160", 300); }
+        if (this.leave > 2 && !this.gone) { this.gone = true; BA.fx.burst(BA.W / 2, BA.H * 0.115, 50, "160,255,160", 240, 0.8, 3); BA.next(); }
+      }
+    },
     render() {
       const { W, H, U, time } = BA;
       clear(0.3);
@@ -53,6 +61,21 @@
       if (this.flash > 0) { ctx.fillStyle = "rgba(255,255,255," + this.flash.toFixed(2) + ")"; ctx.fillRect(fx0, fy0, fs, fs); }
       const i = Math.floor(this.t / 2.2) % WAIT.length;
       T(garble(WAIT[i], (this.t % 2.2) < 0.3 ? 0.6 : 0), W / 2, fy0 + fs + 18 * U, { size: 11, color: C.ghost });
+      // 탑승자 캐릭터 — 초상 옆에 서 있다가, 탑승하면 우주선 아래로 걸어가 빛기둥으로 올라간다
+      {
+        const as = Math.max(3, Math.round(4 * U)), shipY = H * 0.115, ground = fy0 + fs;
+        const k1 = clamp(this.leave / 0.9, 0, 1), k2 = clamp((this.leave - 0.9) / 1.0, 0, 1);
+        const ax = lerp(fx0 - 46 * U, W / 2, k1 * k1 * (3 - 2 * k1)), ay = lerp(ground, shipY + 30 * U, k2 * k2);
+        if (k2 > 0) {
+          const bw = lerp(60, 14, k2) * U;
+          ctx.fillStyle = "rgba(160,255,160," + (0.22 * (1 - k2 * 0.5)).toFixed(3) + ")";
+          ctx.beginPath(); ctx.moveTo(W / 2 - 10 * U, shipY + 20 * U); ctx.lineTo(W / 2 + 10 * U, shipY + 20 * U); ctx.lineTo(W / 2 + bw, ground); ctx.lineTo(W / 2 - bw, ground); ctx.fill();
+          if (R() < 0.6) BA.fx.spark(W / 2 + (R() - 0.5) * bw, ay, (R() - 0.5) * 30, -80 - R() * 80, "160,255,160", 0.5, 2, 0);
+        }
+        if (k2 < 1) BA.drawAstro(ctx, ax, ay + (this.leave ? 0 : Math.sin(time * 2.2) * 1.5 * U), Math.max(1, as * (1 - k2 * 0.7)), { face: face || BA.defaultFace(), walk: this.leave > 0 && k1 < 1, alpha: 1 - k2 * 0.6 });
+        if (!this.leave) T("탑승자", fx0 - 46 * U, ground + 14 * U, { size: 9, color: C.ghost });
+      }
+      if (this.leave) { T("탑승 중…", W / 2, H * 0.76, { size: 15, bold: true, color: C.green }); return; }
       // 버튼
       const by = H * 0.76;
       if (this.mode === "intro") {
@@ -228,10 +251,18 @@
           const ready = this.called && !this.board, blink = Math.sin(time * 8) > 0;
           const hov = ready && Math.hypot(P.x - px, P.y - py) < 52 * U;
           if (hov) BA.hot = true;
-          T(this.board ? "[●]" : "[B]", px, py, { size: 22, bold: true, color: this.board ? C.green : ready ? (blink || hov ? C.white : C.dim) : C.dim });
+          T(this.board ? "[ ]" : "[B]", px, py, { size: 22, bold: true, color: this.board ? C.green : ready ? (blink || hov ? C.white : C.dim) : C.dim });
           if (ready) { ctx.strokeStyle = hov ? C.white : C.ghost; ctx.beginPath(); ctx.arc(px, py, 34 * U, 0, 6.283); ctx.stroke(); }
           if (hov && P.click) { this.board = 0.001; Snd.blip(220, 0.5, "sawtooth", 0.06, 880); BA.fx.burst(px, py, 50, "160,255,160", 260, 0.8, 3); BA.fx.glitch(0.3); sys("탑승 확인. 분기 발생."); }
         } else T("[ ]", px, py, { size: 18, color: C.dim });
+      }
+      // 탑승자 — 옆에서 기다리다가 포드로 뛰어 들어가 함께 돈다
+      {
+        const as = Math.max(2, Math.round(3 * U)), wx = cx - r * 1.5, wy = cy + r * 1.05;
+        const k = this.board ? clamp(this.board / 0.6, 0, 1) : 0;
+        const ax = lerp(wx, this.px || wx, k), ay = lerp(wy, (this.py || wy) + 7 * as, k) - Math.sin(k * Math.PI) * 60 * U;
+        BA.drawAstro(ctx, ax, ay, as, { walk: k > 0 && k < 1 });
+        if (!this.board) T("탑승자", wx, wy + 12 * U, { size: 9, color: C.ghost });
       }
       if (this.board) {
         const lines = ["분기 발생.", "A는 물질로 이동한다.", "B는 상태로 탑승한다.", "피펫은 작은 우주선이다."];

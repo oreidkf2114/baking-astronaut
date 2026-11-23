@@ -102,6 +102,48 @@
   }
   BA.drawFace = drawFace;
 
+  // 전신 도트 우주비행사 — 헬멧 안에 탑승자 얼굴(5×4로 축약)이 들어간다
+  //   (x, feetY) = 발바닥 중앙. s = 한 칸 px. o: { face, walk, dmg, alpha }
+  const ASTRO = [
+    "...WWWWW...",
+    "..WHHHHHW..",
+    "..WHHHHHW..",
+    "..WHHHHHW..",
+    "..WHHHHHW..",
+    "...WWWWW...",
+    ".DWWWWWWWD.",
+    ".DWWGWWWWD.",
+    ".DWWWWWWWD.",
+    "..WWWWWWW..",
+  ];
+  const LEGS = [
+    ["..WW...WW..", "..WW...WW..", ".DDD...DDD."],      // 서 있기
+    ["..WW...WW..", "..WW..DDD..", ".DDD......."],      // 걷기 A
+    ["..WW...WW..", ".DDD...WW..", "......DDD.."],      // 걷기 B
+  ];
+  function drawAstro(c, x, feetY, s, o) {
+    o = o || {};
+    const face = o.face || BA.face || defaultFace(), dmg = o.dmg || 0;
+    const fr = o.walk ? 1 + (Math.floor(BA.time * 7) % 2) : 0;
+    const rows = ASTRO.concat(LEGS[fr]), x0 = Math.round(x - 5.5 * s), y0 = Math.round(feetY - rows.length * s);
+    c.globalAlpha = o.alpha == null ? 1 : clamp(o.alpha, 0, 1);
+    for (let r = 0; r < rows.length; r++) for (let q = 0; q < 11; q++) {
+      const ch = rows[r][q];
+      if (ch === ".") continue;
+      if (ch === "H") {
+        // 얼굴 격자의 가운데 영역을 5×4 칸으로 평균
+        const fx = q - 3, fy = r - 1;
+        let sum = 0, n = 0;
+        for (let yy = 6 + fy * 5; yy < 11 + fy * 5; yy++) for (let xx = 4 + fx * 5; xx < 9 + fx * 5; xx++) { sum += face[yy * G + xx] || 0; n++; }
+        const l = Math.pow(sum / n, 0.8), v = Math.round(18 + l * 222);
+        c.fillStyle = dmg > 0.66 ? "rgb(" + v + "," + Math.round(v * 0.4) + "," + Math.round(v * 0.35) + ")" : "rgb(" + v + "," + v + "," + Math.round(v * 0.96) + ")";
+      } else c.fillStyle = ch === "G" ? C.green : ch === "D" ? "#8c8c8c" : C.white;
+      c.fillRect(x0 + q * s, y0 + r * s, s, s);
+    }
+    c.globalAlpha = 1;
+  }
+  BA.drawAstro = drawAstro;
+
   // ───── VITAL ───────────────────────────────────────────────
   let hitT = 0, shownHp = 100, beatT = 0, drainAcc = 0;
   const Vital = {

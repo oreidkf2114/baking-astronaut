@@ -226,6 +226,19 @@
       clear(0.45);
       BA.stars.draw(0.15, 0, 0.3);
       T("PAGE 7 — 나만의 빵", W / 2, 96, { size: 13, color: C.dim });
+      // 귀환 — 착륙한 우주선에서 탑승자가 걸어 나와 오븐 곁에 선다. 빵이 나오면 뛴다
+      {
+        const reveal = this.phase === "reveal", as = Math.max(3, Math.round(4 * U)), ss = Math.max(2, Math.round(3 * U));
+        const ground = reveal ? H * 0.5 : g.oy + g.oh + 10 * U;
+        const left = reveal ? W / 2 - Math.min(380 * U, W * 0.62) / 2 : g.ox;
+        const shipX = Math.max(34 * U, left - 170 * U), stand = Math.max(shipX + 50 * U, left - 40 * U);
+        const wk = clamp((this.t - 0.6) / 2.2, 0, 1), ax = lerp(shipX + 10 * U, stand, wk);
+        const hop = reveal ? Math.abs(Math.sin(time * 7)) * (this.pt < 5 ? 16 : 4) * U : this.phase === "bake" && this.bake > 0.45 ? Math.abs(Math.sin(time * 3)) * 3 * U : 0;
+        BA.drawShip(shipX, ground - 7 * ss, ss, 0);
+        ctx.fillStyle = "rgba(216,216,216,0.25)"; ctx.fillRect(shipX - 40 * U, ground, stand - shipX + 80 * U, 1);
+        if (this.t > 0.6) BA.drawAstro(ctx, ax, ground - hop, as, { walk: wk < 1 });
+        if (this.t < 3.2) T("귀환", shipX, ground + 14 * U, { size: 9, color: C.green, alpha: 3.2 - this.t });
+      }
 
       if (this.phase !== "reveal") {
         // 오븐
