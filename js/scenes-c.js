@@ -9,7 +9,7 @@
 
   // ═════ 7. FERMENTATION ═══════════════════════════════════════
   BA.add({
-    id: "fermentation", mood: "yeast", glow: 0.35, hint: "밀가루와 물을 같은 양으로 · 온도 24~28°C · 31°C 넘기거나 굶기면 VITAL 감소",
+    id: "fermentation", mood: "yeast", glow: 0.35, hint: "반죽이 그릇을 가득 채우면 발효 완료 · 밀가루와 물을 같은 양으로 · 온도 24~28°C · 31°C 넘기거나 굶기면 VITAL 감소",
     enter() {
       const S = BA.S;
       if (!S.tg) S.tg = BA.pickTarget();
@@ -17,6 +17,10 @@
       this.t = 0; this.fl = 0; this.wa = 0; this.temp = 19.4; this.f = 0; this.ph = 6.8; this.bump = 0; this.act = 0;
       this.hist = new Array(160).fill(6.8); this.acc = 0; this.feeds = 0; this.tSum = 0; this.tW = 0; this.bSum = 0; this.mark = 0; this.done = 0;
       this.bub = []; this.msg = "배고프다. 가루. 물."; this.msgT = 0; this.starve = 0;
+      // 그릇의 부피(층마다 반지름²)를 아래부터 쌓아 둔다 — 반죽은 "부피"로 차오르므로 좁은 목은 빨리, 넓은 배는 천천히 찬다
+      const pr = S.vessel.profile; this.cum = new Float32Array(N); let acc = 0;
+      for (let i = 0; i < N; i++) { acc += pr[i] * pr[i]; this.cum[i] = acc; }
+      for (let i = 0; i < N; i++) this.cum[i] /= acc;
       Snd.drone(82, 0.04, 320);
       say("그릇에 효모가 들어갑니다. 먹이와 온기를 맞춰 발효를 도우세요.");
       sys("발효 시작 · pH 6.80");
@@ -68,8 +72,8 @@
         BA.S.ferm = { ph: this.ph, temp: Math.round(this.tW ? this.tSum / this.tW : 26), feeds: this.feeds, sec: Math.round(this.t), bal: this.tW ? this.bSum / this.tW : 0 };
         Snd.chord([392, 494, 587, 784, 988], 0.07);
         BA.fx.flash("240,236,220", 0.3); BA.fx.burst(BA.W * 0.3, BA.H * 0.5, 90, "240,236,220", 320, 1.2, 4); BA.Vital.heal(10, "발효 완료");
-        say("발효 완료. 부피가 두 배가 되었습니다.");
-        sys("발효 완료 · pH " + this.ph.toFixed(2));
+        say("발효 완료. 반죽이 그릇을 가득 채웠습니다.");
+        sys("그릇 가득 · 발효 완료 · pH " + this.ph.toFixed(2));
       }
     },
     render() {
@@ -79,7 +83,10 @@
       const vh = Math.min(H * (wide ? 0.42 : 0.28), W * 0.36), vx = wide ? W * 0.3 : W / 2, vy = wide ? H * 0.5 : H * 0.34;
       const scale = vh * 0.78, bot = vy + vh / 2, sh = vh / N;
       // dough — 그릇 단면 안에서 부풀어 오른다
-      const level = Math.floor(N * (0.22 + 0.68 * this.f));
+      // 처음엔 그릇 부피의 1/4. 발효될수록 부피가 늘어 f = 1 에서 정확히 입구까지 찬다 → 가득 차면 끝
+      const want = 0.25 + 0.75 * this.f;
+      let level = N; for (let i = 0; i < N; i++) if (this.cum[i] >= want - 1e-6) { level = i + 1; break; }
+      const fill = Math.round(want * 100), rimY = bot - N * sh, rimR = p[N - 1] * scale;
       for (let i = 0; i < level; i++) {
         const rp = Math.max(0, p[i] * scale - 4), y = bot - (i + 1) * sh, top = i === level - 1;
         ctx.fillStyle = top ? "rgba(240,236,220,0.95)" : "rgba(214,208,188," + (0.5 + 0.3 * Math.sin(i * 1.7 + time)) + ")";
@@ -95,10 +102,18 @@
         const i = Math.floor(((k * 0.37 + time * 0.03) % 1) * Math.max(1, level - 2)), rp = Math.max(0, p[i] * scale - 16);
         BA.drawYeast(k % 3 ? "idle" : "bud", vx + Math.sin(k * 2.1 + time * 0.7) * rp * 0.8, bot - (i + 0.5) * sh, Math.max(1.5, 1.8 * U), "#101010", false, 0.8);
       }
+      if (this.done) {                                        // 입구 위로 봉긋하게 솟는다
+        const k = clamp(this.done / 1.2, 0, 1), rr = Math.max(0, rimR - 4);
+        ctx.fillStyle = "rgba(240,236,220,0.95)"; ctx.beginPath(); ctx.ellipse(vx, rimY + 1, rr, rr * 0.5 * k, 0, Math.PI, 0); ctx.fill();
+      }
       BA.vesselOutline(p, vx, vy, vh, "rgba(230,225,210,0.95)", null, 3);
+      // 입구 = 목표선
+      ctx.strokeStyle = this.done ? C.green : "rgba(160,255,160," + (0.45 + 0.35 * Math.sin(time * 4)).toFixed(2) + ")"; ctx.setLineDash([5, 5]);
+      ctx.beginPath(); ctx.moveTo(vx - rimR - 26 * U, rimY); ctx.lineTo(vx + rimR + 26 * U, rimY); ctx.stroke(); ctx.setLineDash([]);
+      T(this.done ? "가득 찼다" : "여기까지 차면 완료", vx + rimR + 32 * U, rimY, { size: 10, align: "left", bold: this.done > 0, color: C.green });
       T(S.vessel.name, vx, bot + 30 * U, { size: 12, color: C.dim });
       // 효모의 말
-      T(this.done ? "이제 됐다. 우리는 두 배가 되었다." : garble(this.msg, 0.06), vx, vy - vh / 2 - 38 * U, { size: 17, bold: true, color: this.act > 0.6 || this.done ? C.white : C.amber });
+      T(this.done ? "이제 됐다. 그릇이 가득 찼다." : garble(this.msg, 0.06), vx, vy - vh / 2 - 38 * U, { size: 17, bold: true, color: this.act > 0.6 || this.done ? C.white : C.amber });
 
       T("PAGE 5 — FERMENTATION", W / 2, 96, { size: 13, color: C.dim });
       // panel
@@ -108,7 +123,7 @@
       this.hist.forEach((v, i) => { const x = px + (i / (this.hist.length - 1)) * pw, y = py + gh - ((v - 3.5) / 4) * gh; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
       ctx.stroke(); ctx.lineWidth = 1;
       T("pH " + this.ph.toFixed(2), px, py - 14 * U, { size: 18, align: "left", bold: true, color: C.white });
-      T("FERMENT " + String(Math.round(this.f * 100)).padStart(3, "0") + "%", px + pw, py - 14 * U, { size: 14, align: "right", bold: true, color: this.f >= 1 ? C.green : C.text });
+      T("그릇 채움 " + String(fill).padStart(3, "0") + "%", px + pw, py - 14 * U, { size: 14, align: "right", bold: true, color: this.f >= 1 ? C.green : C.text });
       T("7.5", px - 6, py + 6, { size: 9, align: "right", color: C.ghost }); T("3.5", px - 6, py + gh - 4, { size: 9, align: "right", color: C.ghost });
       const bar = (label, v, y, lo, hi, txt, warn) => {
         T(label, px, y, { size: 11, align: "left", color: C.dim });

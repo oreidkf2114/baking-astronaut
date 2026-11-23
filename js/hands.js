@@ -8,6 +8,7 @@
   "use strict";
   const { clamp, lerp, P, C, sys } = BA;
   const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/";
+  const HANDS_SRI = "sha384-oHwoZ9HyKv5ark5VOH+XWdbNfmhYtptAOBuV8plz6mAfXvTA6d8fULuYllWouEK2";
   const btn = document.getElementById("btnHand");
 
   const palm = (lm) => { let x = 0, y = 0; for (const i of [0, 5, 9, 13, 17]) { x += lm[i].x; y += lm[i].y; } return { x: x / 5, y: y / 5 }; };
@@ -33,6 +34,7 @@
           await new Promise((res, rej) => {
             const s = document.createElement("script");
             s.src = CDN + "hands.js"; s.crossOrigin = "anonymous";
+            s.integrity = HANDS_SRI;                           // CDN 의 파일이 바뀌면 실행하지 않는다
             s.onload = res; s.onerror = () => rej(new Error("net"));
             document.head.appendChild(s);
           });

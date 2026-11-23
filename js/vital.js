@@ -164,22 +164,25 @@
 
   // 전신 도트 우주비행사 — 헬멧 안에 탑승자 얼굴(5×4로 축약)이 들어간다
   //   (x, feetY) = 발바닥 중앙. s = 한 칸 px. o: { face, walk, dmg, alpha }
+  //   안테나 달린 둥근 헬멧 · 가슴 계기판 · 벌린 팔 · 부츠
   const ASTRO = [
-    "...WWWWW...",
-    "..WHHHHHW..",
-    "..WHHHHHW..",
-    "..WHHHHHW..",
-    "..WHHHHHW..",
-    "...WWWWW...",
-    ".DWWWWWWWD.",
-    ".DWWGWWWWD.",
-    ".DWWWWWWWD.",
+    "........G..",
+    "..WWWWWWD..",
+    ".WWHHHHHWW.",
+    ".WDHHHHHDW.",
+    ".WDHHHHHDW.",
+    ".WWHHHHHWW.",
     "..WWWWWWW..",
+    "..DWWWWWD..",
+    ".WWWGGGWWW.",
+    "WWDWGWGWDWW",
+    "WW.WWWWW.WW",
+    "...WWWWW...",
   ];
   const LEGS = [
-    ["..WW...WW..", "..WW...WW..", ".DDD...DDD."],      // 서 있기
-    ["..WW...WW..", "..WW..DDD..", ".DDD......."],      // 걷기 A
-    ["..WW...WW..", ".DDD...WW..", "......DDD.."],      // 걷기 B
+    ["...WW.WW...", "...WW.WW...", "..DDD.DDD.."],      // 서 있기
+    ["...WW.WW...", "...WW..DDD.", "..DDD......"],      // 걷기 A
+    ["...WW.WW...", "..DDD..WW..", "......DDD.."],      // 걷기 B
   ];
   function drawAstro(c, x, feetY, s, o) {
     o = o || {};
@@ -192,7 +195,7 @@
       if (ch === ".") continue;
       if (ch === "H") {
         // 얼굴 격자의 가운데 영역을 5×4 칸으로 평균
-        const fx = p - 3, fy = r - 1;
+        const fx = p - 3, fy = r - 2;
         let R0 = 0, G0 = 0, B0 = 0, n = 0;
         for (let yy = Math.floor((6 + fy * 5) * k); yy < Math.floor((11 + fy * 5) * k); yy++) for (let xx = Math.floor((4 + fx * 5) * k); xx < Math.floor((9 + fx * 5) * k); xx++) {
           const j = (yy * G + xx) * 4; n++;

@@ -118,10 +118,22 @@ window.BA = (() => {
   }
 
   // ───── sprites ─────────────────────────────────────────────
+  // 둥근 현창이 달린 로켓 — W 선체 · D 그늘/노즐 · G 현창 유리
   const SHIP = [
-    "....W..W....", "....W..W....", "....WWWW....", "...WWWWWW...", "..WWWWWWWW..",
-    ".WWWWWWWWWW.", "WW.WWWWWW.WW", "WW.W....W.WW", "WW.W.GG.W.WW", "WW.W....W.WW",
-    "WW.WWWWWW.WW", ".WWWWWWWWWW.", "..WWWWWWWW..", "...W..W..W..",
+    "......W......",
+    ".....WWW.....",
+    "....WWWWW....",
+    "...WWDDDWW...",
+    "...WDGGGDW...",
+    "...WDGGGDW...",
+    "...WWDDDWW...",
+    "..WWWWWWWWW..",
+    "..WWWWWWWWW..",
+    ".WWWDWWWDWWW.",
+    "WWWWDWWWDWWWW",
+    "WW.WWWWWWW.WW",
+    "W...WW.WW...W",
+    "....D...D....",
   ];
   function drawShip(cx, cy, scale, flame, flip) {
     const cols = SHIP[0].length, rows = SHIP.length;
@@ -131,13 +143,13 @@ window.BA = (() => {
       for (let c = 0; c < cols; c++) {
         const ch = row[c];
         if (ch === ".") continue;
-        ctx.fillStyle = ch === "G" ? C.green : C.white;
+        ctx.fillStyle = ch === "G" ? C.green : ch === "D" ? "#8c8c8c" : C.white;
         ctx.fillRect(x0 + c * scale, y0 + r * scale, scale, scale);
       }
     }
     if (flame > 0) {
       const frame = Math.floor(BA.time * 30);
-      [3, 6, 9].forEach((col, i) => {
+      [4, 8].forEach((col, i) => {                          // 두 노즐
         const len = Math.round(flame) + (((frame + i * 7) % 6) < 3 ? 0 : 1);
         for (let j = 0; j < len; j++) {
           ctx.fillStyle = "rgba(216,216,216," + ((1 - j / Math.max(1, len)) * 0.85).toFixed(2) + ")";

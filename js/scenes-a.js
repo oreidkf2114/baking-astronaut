@@ -290,7 +290,7 @@
       {
         const as = Math.max(2, Math.round(3 * U)), wx = cx - r * 1.5, wy = cy + r * 1.05;
         const k = this.board ? clamp(this.board / 0.6, 0, 1) : 0;
-        const ax = lerp(wx, this.px || wx, k), ay = lerp(wy, (this.py || wy) + 7 * as, k) - Math.sin(k * Math.PI) * 60 * U;
+        const ax = lerp(wx, this.px || wx, k), ay = lerp(wy, (this.py || wy) + 8 * as, k) - Math.sin(k * Math.PI) * 60 * U;
         BA.drawAstro(ctx, ax, ay, as, { walk: k > 0 && k < 1 });
         if (!this.board) T("탑승자", wx, wy + 12 * U, { size: 9, color: C.ghost });
       }
