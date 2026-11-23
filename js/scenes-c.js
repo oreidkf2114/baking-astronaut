@@ -141,7 +141,7 @@
       const S = BA.S, { W, H } = BA;
       S.recipe = BA.makeRecipe(S);
       const x = BA.expandRecipe(S.recipe);
-      const parts = [x.base.flours.map((f) => f[0]).join("+"), "수화율 " + x.hyd + "%", "르뱅 " + x.lev + "%", x.adds.map((a) => a.name).join(" + "), x.bulk + "h @ " + S.recipe.t + "°C"];
+      const parts = [x.base.flours.map((f) => f[0]).join("+"), "수화율 " + x.hyd + "%", "르뱅 " + x.lev + "%", (x.adds.map((a) => a.name).join(" + ") || "부재료 없음"), x.bulk + "h @ " + S.recipe.t + "°C"];
       this.y = parts.map((label, i) => ({ label, x: W * (0.16 + i * 0.17), by: H * (0.34 + (i % 2) * 0.14), p: i * 1.3, got: 0 }));
       this.n = 0; this.t = 0; this.fin = 0;
       Snd.drone(110, 0.04, 700);
@@ -231,7 +231,7 @@
       ["lr", "DATE", d.getFullYear() + "." + z(d.getMonth() + 1) + "." + z(d.getDate()) + " " + z(d.getHours()) + ":" + z(d.getMinutes())],
       ["lr", "탑승자", r.n], ["-"],
       ["lr", "그릇", r.vn.replace(/ #.*/, "") + " (일치 " + r.vs + "%)"],
-      ["lr", "신호 동기화", r.sy + "% → 부재료 " + BA.RECIPE_DATA.tierName[x.tier]],
+      ["lr", "신호 동기화", r.sy + "% → " + BA.RECIPE_DATA.tierName[x.tier] + " 레시피"],
       ["lr", "최종 산도", "pH " + r.ph.toFixed(2)],
       ["lr", "생체 신호", "VITAL " + r.hp + " · 재조립 " + r.d + "회"], ["-"],
       ["c", "「 " + x.name + " 」", "b"],
@@ -356,26 +356,31 @@
   });
 
   // ═════ 11. CREDITS — 효모 엔딩 크레딧 ════════════════════════
-  const ROLES = ["DIRECTION", "DRAMATURGY", "VISUAL", "SOUND", "TECHNICAL", "HARDWARE", "BIO-ARCHITECT", "PERFORMER A", "PERFORMER B", "SPECIAL THANKS"];
-  const yid = () => "[ 효모균" + String(Math.floor(R() * 100000)).padStart(5, "0") + " ]";
+  // 플레이어 효모 → 만든 효모들 → 그동안 다녀간 체험자 효모들 순으로 지나간다
+  const STAFF = [["기획 효모", "유승협 · 여가은"], ["제작 효모", "유승협"], ["2D 디자인 효모", "유승협 · 여가은"], ["사운드 효모", "유승협 · 여가은"]];
   BA.add({
-    id: "credits", mood: "gift", green: true, hint: "효모 승무원들이 지나갑니다",
+    id: "credits", mood: "gift", green: true, hint: "효모 승무원들이 지나갑니다 — 그동안 다녀간 체험자 효모들과 함께",
     enter() {
-      const { W, H } = BA;
-      const roster = [{ role: "ASTRONAUT", name: "[ " + BA.S.name + " ]", g: true, me: true }, { role: "ASTRONAUT", name: "[ 아스트로넛 승협 ]", g: true }, { role: "ASTRONAUT", name: "[ 아스트로넛 여가은 ]", g: true }]
-        .concat(ROLES.map((role) => ({ role, name: yid() })));
+      const { W, H } = BA, Log = BA.Log, z = (n) => String(n).padStart(2, "0");
+      Log.add(BA.S);                                       // 빵을 건너뛰고 온 경우에도 한 번은 기록한다
+      const past = Log.players.slice(0, -1).reverse().slice(0, 40);   // 방금 기록한 나를 뺀, 최근 순
+      const roster = [{ role: "플레이어 효모", name: "[ " + BA.S.name + " ]", g: true, me: true }]
+        .concat(STAFF.map(([role, name]) => ({ role, name: "[ " + name + " ]", g: true })))
+        .concat(past.map((p) => { const d = new Date(p.ts); return { role: "체험자 효모" + (p.ts ? " · " + z(d.getMonth() + 1) + "." + z(d.getDate()) : ""), name: "[ " + p.n + " ]", sub: p.r }; }));
+      const gap = Math.max(210, W * 0.17);
       this.y = roster.map((c, i) => ({
-        ...c, x: W * 0.1 + i * Math.max(190, W * 0.17), y: 150 + R() * Math.max(60, H - 400),
-        v: 34 + R() * 22, p: R() * 6.28, s: c.g ? 8 : 5 + Math.floor(R() * 3), bud: !c.g && R() < 0.35,
+        ...c, x: W * 0.12 + i * gap, y: 150 + R() * Math.max(60, H - 420),
+        v: 44, p: R() * 6.28, s: c.g ? 8 : 5 + Math.floor(R() * 3), bud: !c.g && R() < 0.35,
       }));
-      this.span = roster.length * Math.max(190, W * 0.17);
+      this.span = roster.length * gap;
+      this.total = Log.count; this.none = !past.length;
       this.t = 0;
       Snd.drone(98, 0.035, 500);
-      sys("yeast crew is dispatched. credits floating.");
+      sys("yeast crew is dispatched. " + this.total + " yeasts on record.");
     },
     update(dt) {
       this.t += dt;
-      for (const y of this.y) { y.x -= y.v * dt; if (y.x < -220) y.x += Math.max(this.span, BA.W + 440); }
+      for (const y of this.y) { y.x -= y.v * dt; if (y.x < -240) y.x += Math.max(this.span, BA.W + 480); }
     },
     render() {
       const { W, H, U, time } = BA;
@@ -383,14 +388,17 @@
       BA.stars.draw(0.3, 0, 0.5);
       T("ENDING CREDITS", W / 2, 96, { size: 13, color: C.dim });
       for (const y of this.y) {
+        if (y.x < -240 || y.x > W + 240) continue;
         const yy = y.y + Math.sin(time * 1.4 + y.p) * 8, col = y.g ? C.green : C.white, sc = Math.max(2, Math.round(y.s * U * 0.8));
         if (y.me && BA.face) BA.drawFace(ctx, BA.face, y.x - sc * 5, yy - sc * 5, sc * 10, {});
         else BA.drawYeast(y.bud ? "bud" : Math.sin(time * 6 + y.p) > 0 ? "idle" : "walk", y.x, yy, sc, col, y.g);
         T(y.role, y.x, yy + sc * 7 + 8, { size: 9, color: C.dim });
         T(y.name, y.x, yy + sc * 7 + 24 * U, { size: 12, bold: true, color: y.g ? C.green : C.text });
+        if (y.sub) T(y.sub, y.x, yy + sc * 7 + 40 * U, { size: 9, color: C.ghost });
       }
-      ctx.fillStyle = "rgba(8,8,8,0.6)"; ctx.fillRect(0, H - 150, W, 102);
-      T("공연은 당신의 부엌에서 계속된다.", W / 2, H - 128, { size: 15, bold: true, color: C.white });
+      ctx.fillStyle = "rgba(8,8,8,0.6)"; ctx.fillRect(0, H - 170, W, 122);
+      T("공연은 당신의 부엌에서 계속된다.", W / 2, H - 148, { size: 15, bold: true, color: C.white });
+      T(this.none ? "당신이 이곳의 첫 번째 체험자 효모입니다." : "지금까지 " + this.total + "명의 효모가 다녀갔습니다." + (BA.Log.remote ? "" : " (이 기기 기록)"), W / 2, H - 122, { size: 11, color: C.green });
       if (this.t > 3 && Btn("↺ 처음으로", W / 2, H - 86, { size: 13 })) { BA.hush(); BA.reset(); BA.go(0); }
     },
   });

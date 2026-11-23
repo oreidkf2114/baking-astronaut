@@ -3,11 +3,14 @@
 //   굽기  : 껍질 색 게이지가 오른다. [꺼내기]를 누른 순간이 껍질 색이 된다 (덜 익음 / 황금 / 진함 / 탐)
 //   빵    : 레시피가 형태를 정한다 — 성형(불·바타르·틴), 밀가루 색, 부재료 알갱이, 수화율 = 속살 기공 크기
 //   향    : 김과 향 글자가 피어오른다
-//   공유  : 빵 + 영수증을 한 장의 JPG 로. 폰에서는 공유 시트(카톡·메시지·메일), PC 에서는 저장 + 메일 작성
+//   자르기: 빵을 반으로 갈라 단면(속살·기공·부재료)을 본다
+//   보내기: 빵 + 영수증을 한 장의 JPG 로. 이메일 주소를 적으면 그 주소로 보낸다
+//           (config.js 에 서버 주소가 있으면 서버가 발송, 없으면 JPG 저장 + 메일 작성 창)
 
 (() => {
   "use strict";
   const { ctx, C, T, Btn, clear, clamp, lerp, R, hash, Snd, P, say, sys } = BA;
+  const mailBox = document.getElementById("mailBox"), mailInput = document.getElementById("mailInput");
 
   // 부재료 → 알갱이 [r,g,b, 밀도, 크기] / 반죽 색조 / 향
   const SPECK = {
@@ -42,55 +45,70 @@
     return k <= 0 ? 0 : h * Math.pow(k, 0.5);
   }
 
-  // 도트 빵. (cx, baseY) = 바닥 중앙, size = 가로 폭(px). o: { bake 0..1, rise 0..1, cut }
+  // 도트 빵. (cx, baseY) = 바닥 중앙, size = 가로 폭(px). o: { bake 0..1, rise 0..1, cut 0..1 }
+  //   cut > 0 이면 한가운데를 갈라 왼쪽 반 덩이와, 이쪽을 보는 단면(속살·기공·부재료)을 나란히 놓는다
   function drawBread(c, r, x, cx, baseY, size, o) {
     const shape = r.s, G = 72, cell = size / G, seed = (r.ts % 9973) + 1, bake = o.bake, rise = o.rise == null ? 1 : o.rise;
+    const cut = clamp(+o.cut || 0, 0, 1), halved = cut > 0.02;
     const base = crustColor(bake), wholeness = x.base.id === "ww30" ? 0.16 : x.base.id === "white" ? 0 : 0.08;
     const ids = x.adds.map((a) => a.id), specks = ids.flatMap((id) => SPECK[id] || []), tints = ids.map((id) => TINT[id]).filter(Boolean);
-    const cutAt = o.cut ? 0.1 : 2;                       // 자르면 오른쪽이 떨어져 나가고 단면이 보인다
     const crumb = (() => { let cr = [242, 230, 196]; for (const t of tints) cr = mix(cr, t, t[3] * 1.3); return wholeness ? mix(cr, [190, 160, 120], wholeness * 2) : cr; })();
     const holeS = clamp((x.hyd - 62) / 20, 0.15, 1);     // 수화율이 높을수록 기공이 크다
+    const put = (px, py, col) => { c.fillStyle = "rgb(" + (col[0] | 0) + "," + (col[1] | 0) + "," + (col[2] | 0) + ")"; c.fillRect(Math.floor(px), Math.floor(py), Math.ceil(cell), Math.ceil(cell)); };
+    const lx = cx - (halved ? size * (0.05 + 0.1 * cut) : 0);            // 덩이(또는 왼쪽 반)의 중심
     for (let gx = 0; gx < G; gx++) {
       const u = (gx + 0.5) / G * 2 - 1, hh = height(shape, u, rise);
-      if (hh <= 0) continue;
-      const rows = Math.round(hh * G * 0.62);
+      if (hh <= 0 || (halved && u > 0)) continue;
+      const rows = Math.round(hh * G * 0.62), face = halved && u > -0.06;  // 잘린 면의 옆모습
       for (let gy = 0; gy < rows; gy++) {
         const v = gy / Math.max(1, rows - 1), hs = hash(gx * 12.9898 + gy * 78.233 + seed);
-        const px = cx + u * size / 2 - cell / 2, py = baseY - (gy + 1) * cell;
-        let col;
-        if (u > cutAt) {
-          // 단면 — 껍질 테두리 + 속살 + 기공
-          const edge = gy >= rows - 2 || gy === 0 || u > (shape === 2 ? 0.7 : (shape === 1 ? 0.94 : 0.76)) - 0.04;
-          if (u - cutAt > 0.62 * (1 - 0)) continue;       // 잘린 조각은 치운다
-          if (edge) col = mix(base, [40, 26, 18], 0.15);
-          else {
-            const n1 = hash(Math.floor(gx / (1 + holeS * 3)) * 3.7 + Math.floor(gy / (1 + holeS * 2)) * 9.1 + seed);
-            col = n1 < 0.16 + holeS * 0.2 ? mix(crumb, [120, 90, 60], 0.55) : mix(crumb, [255, 250, 235], hs * 0.25);
-            for (const s of specks) if (hash(gx * 3.3 + gy * 7.7 + s[0] + seed) < s[3] * 0.8) col = [s[0], s[1], s[2]];
-          }
-        } else {
-          // 껍질 — 위·왼쪽이 밝고, 위쪽일수록 더 구워진다
-          let lit = 0.62 + 0.42 * v - 0.24 * u + (hs - 0.5) * 0.1;
-          if (gy >= rows - 1) lit += 0.12;
-          col = mix(crustColor(clamp(bake * (0.82 + 0.3 * v), 0, 1)), [0, 0, 0], clamp(1 - lit, 0, 0.6));
-          for (const t of tints) col = mix(col, t, t[3] * (1 - bake * 0.45));
-          if (wholeness) col = mix(col, [96, 62, 34], wholeness);
-          // 칼집 — 구워지며 벌어진 "귀"
-          const sc = shape === 0 ? Math.min(Math.abs(v - 0.62 - u * 0.3), Math.abs(v - 0.62 + u * 0.3))
-            : shape === 1 ? Math.abs(v - 0.58 - u * 0.22) : (Math.abs(u) < 0.05 ? 0 : 1);
-          const inScore = shape === 2 ? (sc === 0 && v > 0.72) : (sc < 0.07 && Math.abs(u) < (shape === 1 ? 0.72 : 0.46));
-          if (inScore && rise > 0.6) col = mix(col, mix(crumb, base, 0.35), 0.75 * clamp((rise - 0.6) / 0.3, 0, 1));
-          else if (!inScore && shape !== 2 && sc < 0.1 && sc >= 0.07 && rise > 0.7 && Math.abs(u) < (shape === 1 ? 0.72 : 0.46)) col = mix(col, [30, 18, 12], 0.45);
-          if (hs > 0.9 && v > 0.45 && bake > 0.2) col = mix(col, [250, 246, 236], 0.6);          // 덧가루
-          for (const s of specks) if (hash(gx * 5.1 + gy * 2.9 + s[1] + seed) < s[3]) { col = [s[0], s[1], s[2]]; if (bake > 0.85) col = mix(col, [30, 20, 14], 0.5); }
-          if (shape === 2 && v < 0.3) col = mix(col, [60, 60, 66], 0.55);                         // 틀
-        }
-        c.fillStyle = "rgb(" + (col[0] | 0) + "," + (col[1] | 0) + "," + (col[2] | 0) + ")";
-        c.fillRect(Math.floor(px), Math.floor(py), Math.ceil(cell), Math.ceil(cell));
+        const px = lx + u * size / 2 - cell / 2, py = baseY - (gy + 1) * cell;
+        if (face) { put(px, py, gy >= rows - 2 || gy === 0 ? mix(base, [40, 26, 18], 0.15) : mix(crumb, [150, 120, 84], 0.35 + hs * 0.2)); continue; }
+        // 껍질 — 위·왼쪽이 밝고, 위쪽일수록 더 구워진다
+        let lit = 0.62 + 0.42 * v - 0.24 * u + (hs - 0.5) * 0.1;
+        if (gy >= rows - 1) lit += 0.12;
+        let col = mix(crustColor(clamp(bake * (0.82 + 0.3 * v), 0, 1)), [0, 0, 0], clamp(1 - lit, 0, 0.6));
+        for (const t of tints) col = mix(col, t, t[3] * (1 - bake * 0.45));
+        if (wholeness) col = mix(col, [96, 62, 34], wholeness);
+        // 칼집 — 구워지며 벌어진 "귀"
+        const sc = shape === 0 ? Math.min(Math.abs(v - 0.62 - u * 0.3), Math.abs(v - 0.62 + u * 0.3))
+          : shape === 1 ? Math.abs(v - 0.58 - u * 0.22) : (Math.abs(u) < 0.05 ? 0 : 1);
+        const inScore = shape === 2 ? (sc === 0 && v > 0.72) : (sc < 0.07 && Math.abs(u) < (shape === 1 ? 0.72 : 0.46));
+        if (inScore && rise > 0.6) col = mix(col, mix(crumb, base, 0.35), 0.75 * clamp((rise - 0.6) / 0.3, 0, 1));
+        else if (!inScore && shape !== 2 && sc < 0.1 && sc >= 0.07 && rise > 0.7 && Math.abs(u) < (shape === 1 ? 0.72 : 0.46)) col = mix(col, [30, 18, 12], 0.45);
+        if (hs > 0.9 && v > 0.45 && bake > 0.2) col = mix(col, [250, 246, 236], 0.6);          // 덧가루
+        for (const s of specks) if (hash(gx * 5.1 + gy * 2.9 + s[1] + seed) < s[3]) { col = [s[0], s[1], s[2]]; if (bake > 0.85) col = mix(col, [30, 20, 14], 0.5); }
+        if (shape === 2 && v < 0.3) col = mix(col, [60, 60, 66], 0.55);                         // 틀
+        put(px, py, col);
       }
     }
-    // 바닥 그림자
-    c.fillStyle = "rgba(0,0,0,0.45)"; c.fillRect(cx - size * 0.42, baseY, size * 0.84, Math.max(2, cell * 0.8));
+    if (halved) {
+      // 단면 — 껍질 테두리 2칸, 속살, 크고 작은 기공, 부재료 알갱이. 바타르의 단면은 둥글다
+      const sp = shape === 2 ? 2 : 0, sw = shape === 2 ? 0.74 : shape === 1 ? 0.62 : 0.8;
+      const sx = cx + size * (0.05 + 0.33 * cut), rowsAt = (g) => { const hh = height(sp, ((g + 0.5) / G * 2 - 1) / (shape === 1 ? 0.78 : 1), rise); return hh > 0 ? Math.round(hh * G * 0.62 * (shape === 1 ? 0.9 : 1)) : 0; };
+      c.globalAlpha = cut;
+      for (let gx = 0; gx < G; gx++) {
+        const rows = rowsAt(gx);
+        if (!rows) continue;
+        const u = (gx + 0.5) / G * 2 - 1, nb = Math.min(rowsAt(gx - 2), rowsAt(gx + 2));
+        for (let gy = 0; gy < rows; gy++) {
+          const hs = hash(gx * 12.9898 + gy * 78.233 + seed * 1.7), px = sx + u * size / 2 - cell / 2, py = baseY - (gy + 1) * cell;
+          let col;
+          if (gy >= rows - 2 || gy < 1 || gy >= nb) col = mix(crustColor(clamp(bake * (0.9 + 0.2 * gy / rows), 0, 1)), [30, 18, 12], gy < 1 ? 0.3 : 0.1);
+          else {
+            const big = hash(Math.floor(gx / (2 + holeS * 3)) * 3.7 + Math.floor(gy / (2 + holeS * 2)) * 9.1 + seed), small = hash(Math.floor(gx / 2) * 5.3 + Math.floor(gy / 1.5) * 2.1 + seed);
+            const hole = big < 0.1 + holeS * 0.22 || small < 0.12;
+            col = hole ? mix(crumb, [96, 70, 46], 0.5 + hs * 0.2) : mix(crumb, [255, 250, 235], hs * 0.3);
+            if (!hole && gy > rows - 5) col = mix(col, base, 0.25);                             // 껍질 바로 아래는 조금 짙다
+            for (const s of specks) if (hash(gx * 3.3 + gy * 7.7 + s[0] + seed) < s[3] * 0.9) col = [s[0], s[1], s[2]];
+          }
+          put(px, py, col);
+        }
+      }
+      c.globalAlpha = 1;
+      c.fillStyle = "rgba(0,0,0,0.45)"; c.fillRect(sx - size * sw * 0.5, baseY, size * sw, Math.max(2, cell * 0.8));
+      c.fillRect(lx - size * 0.42, baseY, size * 0.42, Math.max(2, cell * 0.8));
+    } else { c.fillStyle = "rgba(0,0,0,0.45)"; c.fillRect(cx - size * 0.42, baseY, size * 0.84, Math.max(2, cell * 0.8)); }   // 바닥 그림자
   }
   BA.drawBread = drawBread;
   BA.breadCard = (st) => cardCanvas(BA.S, st);
@@ -119,7 +137,7 @@
     c.fillStyle = "#080808"; c.fillRect(0, 0, cv.width, cv.height);
     for (let i = 0; i < 160; i++) { c.fillStyle = "rgba(216,216,216," + (0.15 + hash(i * 3.3) * 0.5).toFixed(2) + ")"; c.fillRect(hash(i) * cv.width, hash(i + 77) * top, 2, 2); }
     drawSteam(c, cv.width / 2, 150, 300, 110, 3.1, 1);
-    drawBread(c, r, x, cv.width / 2, 350, 380, { bake: st.bake, rise: 1, cut: st.cut });
+    drawBread(c, r, x, cv.width / 2, 350, st.cut ? 330 : 380, { bake: st.bake, rise: 1, cut: st.cut ? 1 : 0 });
     c.textAlign = "center"; c.textBaseline = "middle";
     c.fillStyle = "#D8D8D8"; c.font = "700 30px " + BA.FONT; c.fillText(x.name, cv.width / 2, 400);
     c.fillStyle = "rgba(255,255,255,0.5)"; c.font = "16px " + BA.FONT;
@@ -140,7 +158,7 @@
       const S = BA.S;
       if (!S.recipe) { if (!S.tg) S.tg = BA.pickTarget(); if (!S.vessel) S.vessel = { name: S.tg.name, score: 0, profile: S.tg.profile }; S.recipe = BA.makeRecipe(S); }
       this.r = S.recipe; this.x = BA.expandRecipe(this.r);
-      this.t = 0; this.phase = "insert"; this.pt = 0; this.bake = 0; this.cut = false; this.blob = null; this.msg = ""; this.msgT = 0; this.words = []; this.wT = 0;
+      this.t = 0; this.phase = "insert"; this.pt = 0; this.bake = 0; this.cut = false; this.cutK = 0; this.sending = false; this.blob = null; this.msg = ""; this.msgT = 0; this.words = []; this.wT = 0;
       this.card = { x: BA.W / 2, y: BA.H * 0.74, drag: false, in: 0 };
       this.scents = [BASE_SCENT[this.x.base.id] || "갓 구운 밀"].concat(this.x.adds.map((a) => SCENT[a.id]).filter(Boolean)).concat(["새콤한 르뱅"]);
       Snd.drone(82, 0.04, 420);
@@ -156,7 +174,9 @@
       Snd.chord(this.bake > 0.93 ? [196, 185, 147] : [392, 494, 587, 784, 988], 0.07);
       say(this.bake > 0.93 ? "조금 탔습니다. 그래도 당신의 빵입니다." : this.x.name + "가 구워졌습니다.");
       sys("bread out · " + crustName(this.bake) + " · " + this.x.name);
-      BA.hint("빵을 잘라 보고 · JPG로 저장하거나 메시지·카톡·메일로 보내세요");
+      BA.hint("빵을 반으로 잘라 보고 · 이메일 주소를 적어 사진을 보내거나 JPG로 저장하세요");
+      mailBox.hidden = false;
+      if (BA.Log) BA.Log.add(BA.S);
       // 공유 버튼이 누르는 즉시 동작하도록 이미지를 미리 만들어 둔다
       this.makeBlob();
     },
@@ -176,27 +196,31 @@
       this.note("JPG 저장됨 — " + this.fileName());
     },
     text() { return this.r.n + "의 빵 「" + this.x.name + "」 — 효모에게 받아 온 사워도우 레시피"; },
-    async share() {
+    // 적어 넣은 주소로 빵 사진을 보낸다. 주소는 발송에만 쓰고 어디에도 저장하지 않는다
+    async send() {
+      const to = mailInput.value.trim();
+      if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]{2,}$/.test(to)) { mailInput.focus(); return this.note("이메일 주소를 확인해 주세요."); }
       if (!this.blob) return this.note("이미지를 만드는 중입니다. 잠시 후 다시 눌러 주세요.");
-      const file = new File([this.blob], this.fileName(), { type: "image/jpeg" }), url = BA.shareUrl(this.r);
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: "Baking Astronaut", text: this.text() + "\n" + url }); this.note("공유 창을 열었습니다."); }
-        catch (e) { if (e && e.name !== "AbortError") { download(this.blob, this.fileName()); this.note("공유를 열 수 없어 JPG로 저장했습니다."); } }
-      } else {
-        download(this.blob, this.fileName());
-        this.note("이 기기는 바로 공유를 지원하지 않아 JPG로 저장했습니다 — 메신저에 첨부해 보내세요.");
+      if (this.sending) return;
+      if (BA.Log && BA.Log.remote) {
+        this.sending = true; this.note("보내는 중…");
+        const ok = await BA.Log.mail(to, this.blob, { n: this.r.n, r: this.x.name, url: BA.shareUrl(this.r) });
+        this.sending = false;
+        if (ok) return this.note(to + " 로 보냈습니다. 메일함을 확인하세요.");
+        this.note("서버 발송에 실패해 메일 작성 창으로 넘깁니다.");
       }
-    },
-    mail() {
-      if (this.blob) download(this.blob, this.fileName());
+      // 서버가 없으면: JPG 를 내려받고, 받는 사람이 채워진 메일 작성 창을 연다 (첨부는 직접)
+      download(this.blob, this.fileName());
       const x = this.x, body = [this.text(), "", "밀가루  " + x.flour, "물  " + x.water, "르뱅  " + x.levain, "소금  " + x.salt]
         .concat(x.addLines.map((a) => a[0] + "  " + a[1]), [""], x.steps, ["", "레시피 카드 열기: " + BA.shareUrl(this.r), "", "(방금 저장된 JPG를 이 메일에 첨부해 주세요)"]).join("\n");
-      window.location.href = "mailto:?subject=" + encodeURIComponent("[Baking Astronaut] " + x.name) + "&body=" + encodeURIComponent(body);
-      this.note("메일 작성 창을 열었습니다 — 저장된 JPG를 첨부하세요.");
+      window.location.href = "mailto:" + encodeURIComponent(to) + "?subject=" + encodeURIComponent("[Baking Astronaut] " + x.name) + "&body=" + encodeURIComponent(body);
+      this.note("JPG를 저장하고 메일 작성 창을 열었습니다 — 저장된 사진을 첨부해 보내세요.");
     },
+    exit() { mailBox.hidden = true; },
     update(dt) {
       const { W, H, U } = BA, g = this.geom(), c = this.card;
       this.t += dt; this.pt += dt; this.msgT = Math.max(0, this.msgT - dt);
+      this.cutK = clamp(this.cutK + (this.cut ? 1 : -1) * dt * 2.2, 0, 1);
       if (this.phase === "insert") {
         const slotX = g.cx, slotY = g.oy + 4;
         if (c.in) { c.in += dt * 2.2; c.x = lerp(c.x, slotX, 0.2); c.y = lerp(c.y, slotY, 0.2); if (c.in >= 1) { this.phase = "bake"; this.pt = 0; Snd.blip(160, 0.5, "sawtooth", 0.07, 320); Snd.noise(0.5, 0.1, 400); sys("오븐 250°C. 껍질 색을 보고 꺼내라."); } return; }
@@ -292,7 +316,7 @@
         lg.addColorStop(0, "rgba(255,210,140," + (0.16 * k).toFixed(3) + ")"); lg.addColorStop(1, "rgba(255,210,140,0)");
         ctx.fillStyle = lg; ctx.fillRect(0, 64, W, H * 0.6);
         drawSteam(ctx, W / 2, baseY - size * 0.36, size * 0.8, H * 0.22, time, k);
-        drawBread(ctx, r, x, W / 2, baseY, size, { bake: this.bake, rise: 1, cut: this.cut });
+        drawBread(ctx, r, x, W / 2, baseY, size * (1 - 0.12 * this.cutK), { bake: this.bake, rise: 1, cut: this.cutK });
         for (const w of this.words) {
           const a = Math.sin(clamp(w.t / 4.5, 0, 1) * Math.PI);
           T(w.s, w.x + Math.sin(w.t * 1.3 + w.p) * 18 * U, w.y - w.t * 34 * U, { size: 12, color: "rgba(255,236,200,1)", alpha: a * 0.85 });
@@ -301,12 +325,16 @@
         T(x.shape.name + " · " + crustName(this.bake) + " · 수화율 " + x.hyd + "%", W / 2, baseY + 60 * U, { size: 12, color: C.dim, alpha: k });
         T(r.n + "가 효모에게서 받아 와 구운 빵", W / 2, baseY + 80 * U, { size: 11, color: C.green, alpha: k });
         if (this.pt > 1.6) {
-          const y1 = H - 48 - 118, y2 = H - 48 - 76;
-          if (Btn(this.cut ? "다시 붙이기" : "빵 자르기 ✂", W / 2 - 100 * U, y1, { size: 12 })) { this.cut = !this.cut; Snd.noise(0.15, 0.1, 3000, "highpass"); BA.fx.burst(W / 2 + size * 0.1, baseY - size * 0.15, 30, "242,230,196", 180, 0.7, 3, 500); this.makeBlob(); }
-          if (Btn("엔딩 크레딧 ▶", W / 2 + 100 * U, y1, { size: 12 })) BA.next();
-          if (Btn("[ JPG 저장 ]", W / 2 - 190 * U, y2, { size: 13, color: C.green })) this.save();
-          if (Btn("[ 공유 · 카톡 · 메시지 ]", W / 2 - 10 * U, y2, { size: 13, color: C.green })) this.share();
-          if (Btn("메일로", W / 2 + 170 * U, y2, { size: 13 })) this.mail();
+          const y1 = H - 48 - 186, y2 = H - 48 - 86;                       // 그 사이(아래에서 178px)에 이메일 입력칸. 자막 자리는 비워 둔다
+          if (Btn(this.cut ? "다시 붙이기" : "빵 반으로 자르기 ✂", W / 2 - 110 * U, y1, { size: 13, color: this.cut ? C.white : C.amber })) {
+            this.cut = !this.cut; Snd.noise(0.15, 0.1, 3000, "highpass"); Snd.blip(900, 0.12, "square", 0.04, 300);
+            BA.fx.burst(W / 2, baseY - size * 0.2, 40, "242,230,196", 200, 0.7, 3, 500); BA.fx.shock(W / 2, baseY - size * 0.2, "255,236,200", 220);
+            if (this.cut) { sys("단면 확인 — 수화율 " + x.hyd + "% 의 기공."); say("속살이 보입니다."); }
+            this.makeBlob();
+          }
+          if (Btn("엔딩 크레딧 ▶", W / 2 + 120 * U, y1, { size: 12 })) BA.next();
+          if (Btn(this.sending ? "보내는 중…" : "[ 이메일로 사진 보내기 ]", W / 2 - 80 * U, y2, { size: 13, color: C.green })) this.send();
+          if (Btn("JPG 저장", W / 2 + 130 * U, y2, { size: 12 })) this.save();
           if (this.msgT > 0) T(this.msg, W / 2, y1 - 30 * U, { size: 11, color: C.amber, alpha: this.msgT });
         }
       }

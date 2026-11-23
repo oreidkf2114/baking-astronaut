@@ -12,7 +12,7 @@
   const nameBox = document.getElementById("nameBox");
   const nameInput = document.getElementById("nameInput");
   BA.add({
-    id: "idle", mood: "idle", hint: "얼굴을 스캔하면 당신이 도트 승무원이 됩니다 · 약 8분 · 소리 켜기 권장",
+    id: "idle", mood: "idle", hint: "얼굴을 스캔하면 당신이 만화 도트 승무원이 됩니다 · 약 8분 · 소리 켜기 권장",
     enter() {
       this.t = 0; this.mode = BA.faceIsPhoto ? "shot" : "intro"; this.live = null; this.flash = 0; this.msg = ""; this.leave = 0; this.gone = false;
       nameBox.hidden = false; Snd.drone(55, 0.035, 200); sys("standby. 탑승자 신호 대기.");
@@ -45,7 +45,6 @@
       stars.draw(0.5, this.t * 0.01);
       BA.drawShip(W / 2, H * 0.115 + Math.sin(this.t * 1.2) * 4 * U, Math.max(2, Math.round(3 * U)), 2);
       T("BAKING ASTRONAUT", W / 2, H * 0.2, { size: 34, bold: true, color: C.white });
-      T("베이킹 아스트로넛 — 1인 탑승 체험 v2", W / 2, H * 0.2 + 30 * U, { size: 12, color: C.dim });
       // 초상
       const fs = Math.min(190 * U, H * 0.27), fx0 = W / 2 - fs / 2, fy0 = H * 0.44 - fs / 2;
       const face = this.mode === "cam" ? this.live : this.mode === "shot" ? BA.face : null;
@@ -83,7 +82,7 @@
         if (Btn("스캔 없이 탑승 ▶", W / 2 + 130 * U, by, { size: 14 })) this.board();
       } else if (this.mode === "cam") {
         if (Btn("[ ● 촬영 ]", W / 2 - 90 * U, by, { size: 15, color: C.green }) && this.live) {
-          BA.face = Float32Array.from(this.live); BA.faceIsPhoto = true; this.mode = "shot"; this.flash = 1;
+          BA.face = this.live; BA.faceIsPhoto = true; this.mode = "shot"; this.flash = 1;
           Snd.noise(0.12, 0.2, 5000, "highpass"); Snd.blip(1200, 0.08, "square", 0.05);
         }
         if (Btn("취소", W / 2 + 100 * U, by, { size: 13 })) this.mode = BA.faceIsPhoto ? "shot" : "intro";
@@ -93,7 +92,7 @@
       }
       const hand = BA.Hands;
       if (Btn("손 인식 조작 : " + (hand.loading ? "불러오는 중…" : hand.on ? "ON (손바닥 = 포인터 · 핀치 = 클릭)" : "OFF — 눌러서 켜기"), W / 2, H * 0.845, { size: 11, color: hand.on ? C.green : C.dim })) hand.toggle();
-      T(this.msg || hand.err || "카메라 영상은 이 브라우저 안에서만 처리되며 저장·전송되지 않습니다.", W / 2, H * 0.9, { size: 10, color: this.msg || hand.err ? C.amber : C.ghost });
+      T(this.msg || hand.err || "카메라 영상은 이 브라우저 안에서만 처리되며 저장·전송되지 않습니다. 이름은 체험자 기록(크레딧)에 남습니다.", W / 2, H * 0.9, { size: 10, color: this.msg || hand.err ? C.amber : C.ghost });
     },
   });
 
@@ -213,14 +212,17 @@
   ];
   BA.add({
     id: "boarding", mood: "tension", hint: "보고가 끝나면 · 깜빡이는 [B] 포드를 클릭해 탑승",
-    enter() { this.t = 0; this.ang = 0; this.w = 0.55; this.board = 0; this.called = false; Snd.drone(58, 0.05, 240); say("효모의 생태계 보고 데이터를 읽는다."); sys("보고 데이터 수신 중."); },
+    enter() { this.t = 0; this.ang = 0; this.w = 0.55; this.board = 0; this.out = false; this.called = false; Snd.drone(58, 0.05, 240); say("효모의 생태계 보고 데이터를 읽는다."); sys("보고 데이터 수신 중."); },
     update(dt) {
       this.t += dt;
       if (!this.called && this.t > 7.5) { this.called = true; say("원심분리기가 곧 보딩 준비가 완료 됩니다. " + BA.S.name + "는 원심분리기에 탑승하세요."); sys("탑승 대기. [B] 포드를 클릭."); }
       if (this.board) {
-        this.board += dt; this.w = Math.min(16, this.w + dt * 4.2);
-        Snd.drone(58 + this.w * 9, 0.07, 240 + this.w * 60);
-        if (this.board > 4.6) BA.next();
+        // 점점 빨라지다가 → 빛의 터널 → 화면이 하얗게 타오르며 다음 환경으로
+        const was = this.board; this.board += dt; this.w = Math.min(46, this.w + dt * (2.5 + this.board * 3.2));
+        Snd.drone(58 + this.w * 7, 0.07, 240 + this.w * 70);
+        if (this.board > 2.2) BA.fx.shake((this.board - 2.2) * 5);
+        if (was < 3 && this.board >= 3) { Snd.blip(180, 3, "sawtooth", 0.05, 1900); Snd.noise(3, 0.1, 1800); BA.fx.glitch(0.4); sys("분리 가속. 상태가 물질에서 떨어져 나온다."); }
+        if (this.board > 6 && !this.out) { this.out = true; BA.fx.flash("255,255,255", 1); Snd.chord([523, 784, 1047], 0.07); BA.next(); }
       }
       this.ang += this.w * dt;
     },
@@ -264,9 +266,27 @@
         BA.drawAstro(ctx, ax, ay, as, { walk: k > 0 && k < 1 });
         if (!this.board) T("탑승자", wx, wy + 12 * U, { size: 9, color: C.ghost });
       }
+      if (this.board > 2) {
+        // 빛의 터널 — 중심에서 번져 나오는 고리와 빛줄기, 마지막엔 화면 전체가 환해진다
+        const k = clamp((this.board - 2) / 4, 0, 1), far = Math.hypot(W, H);
+        for (let i = 0; i < 7; i++) {
+          const q = ((this.board * (0.5 + k * 1.6) + i / 7) % 1), rr = r * 0.2 + q * q * far * 0.75;
+          ctx.strokeStyle = "rgba(" + (i % 2 ? "160,255,160" : "255,255,255") + "," + (k * (1 - q) * 0.7).toFixed(3) + ")"; ctx.lineWidth = 1 + q * 6 * k;
+          ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 6.283); ctx.stroke();
+        }
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 70; i++) {
+          const a = BA.hash(i * 7.7) * 6.283 + this.ang * 0.05, q = (BA.hash(i * 3.1) + this.board * (0.8 + k * 2.4)) % 1, r0 = r * 0.3 + q * far * 0.6, len = (20 + 260 * k) * U * q;
+          ctx.strokeStyle = "rgba(255,255,255," + (k * 0.75 * q).toFixed(3) + ")";
+          ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len)); ctx.stroke();
+        }
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, far * (0.15 + k * 0.9));
+        g.addColorStop(0, "rgba(255,255,255," + (k * k).toFixed(3) + ")"); g.addColorStop(1, "rgba(235,255,235," + Math.pow(k, 4).toFixed(3) + ")");
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      }
       if (this.board) {
         const lines = ["분기 발생.", "A는 물질로 이동한다.", "B는 상태로 탑승한다.", "피펫은 작은 우주선이다."];
-        lines.forEach((l, i) => { if (this.board > 0.4 + i * 0.9) T(l, cx, cy + r * 1.22 + (34 + i * 22) * U, { size: 14, color: i ? C.text : C.white, bold: !i }); });
+        lines.forEach((l, i) => { if (this.board > 0.4 + i * 0.9 && this.board < 4.6) T(l, cx, cy + r * 1.22 + (34 + i * 22) * U, { size: 14, color: i ? C.text : C.white, bold: !i }); });
       } else if (this.called) T("깜빡이는 [B] 포드를 클릭해 탑승", cx, cy + r * 1.22 + 40 * U, { size: 14, bold: true });
     },
   });

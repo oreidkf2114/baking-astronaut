@@ -103,6 +103,8 @@ canvas#fx { z-index: 3; }
   z-index: 12;
 }
 .name-box[hidden] { display: none; }
+.mail-box { top: auto; bottom: 178px; transform: translate(-50%, 50%); }
+.mail-box input { width: 240px; }
 .name-box input {
   font: inherit; font-size: 14px; letter-spacing: 0.08em;
   width: 190px; padding: 7px 10px;

@@ -8,8 +8,9 @@
 // 모든 양은 베이커스 퍼센트(밀가루 총량 = 100%).
 // 플레이 결과 → 레시피:
 //   발효 장면의 물/밀가루 균형 → 수화율        발효 온도 → 1차 발효 시간·르뱅 비율
-//   빚은 그릇의 형태          → 성형           신호 동기화율 → 부재료 등급
-//   그릇 일치도 85%+          → 부재료 하나 더  재조립(사망) 횟수 → 접기 횟수
+//   빚은 그릇의 형태          → 성형           신호 동기화율 → 레시피 등급(흔함/드묾/희귀)
+//   재조립(사망) 횟수         → 접기 횟수
+// 레시피는 DATA.recipes 의 20종 가운데 등급에 맞는 것이 하나 뽑힌다. 수화율·발효 시간·성형은 플레이에 따라 달라진다.
 
 (() => {
   "use strict";
@@ -27,13 +28,12 @@
       { id: "spelt", name: "스펠트", flours: [["강력분", 80], ["스펠트", 20]], hyd: -1 },
     ],
     // 부재료. tier 1 흔함 / 2 드묾 / 3 희귀. items = [이름, %]. when = 넣는 시점. hyd = 수화율 보정(%p)
-    // pair: true = 다른 부재료와 함께 두 번째 재료로 붙어도 무난한 것
     addins: [
-      { id: "sesame", tier: 1, name: "참깨", items: [["볶은 참깨", 8]], when: "두 번째 접기", pair: true },
-      { id: "walnut", tier: 1, name: "호두", items: [["구운 호두", 20]], when: "두 번째 접기", pair: true },
+      { id: "sesame", tier: 1, name: "참깨", items: [["볶은 참깨", 8]], when: "두 번째 접기" },
+      { id: "walnut", tier: 1, name: "호두", items: [["구운 호두", 20]], when: "두 번째 접기" },
       { id: "raisin", tier: 1, name: "건포도", items: [["건포도(물에 불려 물기 제거)", 15]], when: "두 번째 접기" },
       { id: "olive", tier: 1, name: "올리브", items: [["씨 뺀 올리브", 15]], when: "두 번째 접기" },
-      { id: "oat", tier: 1, name: "귀리", items: [["오트밀(같은 양의 뜨거운 물에 불림)", 10]], when: "첫 번째 접기", pair: true },
+      { id: "oat", tier: 1, name: "귀리", items: [["오트밀(같은 양의 뜨거운 물에 불림)", 10]], when: "첫 번째 접기" },
       { id: "cranwal", tier: 2, name: "크랜베리 호두", items: [["건크랜베리", 12], ["구운 호두", 12]], when: "두 번째 접기" },
       { id: "cheddar", tier: 2, name: "체다", items: [["체다 치즈 큐브", 15]], when: "성형 직전" },
       { id: "rosemary", tier: 2, name: "로즈마리", items: [["다진 로즈마리", 1], ["올리브오일", 3]], when: "소금과 함께" },
@@ -44,6 +44,29 @@
       { id: "yuja", tier: 3, name: "유자", items: [["유자청 건더기", 6]], when: "두 번째 접기", hyd: -2 },
       { id: "garlic", tier: 3, name: "구운 마늘", items: [["구운 마늘", 8]], when: "두 번째 접기" },
       { id: "cacao", tier: 3, name: "카카오 오렌지", items: [["카카오닙", 5], ["오렌지 필", 8]], when: "두 번째 접기" },
+    ],
+    // 레시피 20종 = [밀가루 배합 id, 부재료 id…]. 등급: 흔함 7 / 드묾 7 / 희귀 6
+    recipes: [
+      { tier: 1, base: "white", adds: [] },
+      { tier: 1, base: "ww10", adds: [] },
+      { tier: 1, base: "white", adds: ["sesame"] },
+      { tier: 1, base: "ww10", adds: ["walnut"] },
+      { tier: 1, base: "rye15", adds: ["raisin"] },
+      { tier: 1, base: "white", adds: ["olive"] },
+      { tier: 1, base: "ww30", adds: ["oat"] },
+      { tier: 2, base: "white", adds: ["cranwal"] },
+      { tier: 2, base: "white", adds: ["cheddar"] },
+      { tier: 2, base: "spelt", adds: ["rosemary"] },
+      { tier: 2, base: "white", adds: ["bsesame"] },
+      { tier: 2, base: "rye15", adds: ["fig"] },
+      { tier: 2, base: "ww10", adds: ["walnut", "raisin"] },
+      { tier: 2, base: "ww30", adds: ["sesame"] },
+      { tier: 3, base: "white", adds: ["matcha"] },
+      { tier: 3, base: "white", adds: ["mugwort"] },
+      { tier: 3, base: "spelt", adds: ["yuja"] },
+      { tier: 3, base: "white", adds: ["garlic", "rosemary"] },
+      { tier: 3, base: "rye15", adds: ["cacao"] },
+      { tier: 3, base: "ww10", adds: ["fig", "walnut"] },
     ],
     shapes: [
       { id: "boule", name: "불 (둥근 덩이)", how: "둥글게 말아 반느통에" },
@@ -73,14 +96,10 @@
   // S(플레이 결과) → 레시피. 저장·공유를 위해 인덱스와 숫자만 담는다.
   function makeRecipe(S) {
     const f = S.ferm || {}, sync = S.sync || 0, score = (S.vessel && S.vessel.score) || 0;
-    const b = Math.floor(R() * DATA.bases.length);
     const tier = sync >= 0.9 ? 3 : sync >= 0.5 ? 2 : 1;
-    const pool = DATA.addins.map((a, i) => i).filter((i) => DATA.addins[i].tier === tier);
-    const a = [pick(pool)];
-    if (score >= 85) {                      // 잘 빚은 그릇에는 무난하게 어울리는 견과·곡물이 하나 더 붙는다
-      const p2 = DATA.addins.map((x, i) => i).filter((i) => DATA.addins[i].pair && i !== a[0]);
-      if (p2.length) a.push(pick(p2));
-    }
+    const rc = pick(DATA.recipes.filter((q) => q.tier === tier));
+    const b = Math.max(0, DATA.bases.findIndex((q) => q.id === rc.base));
+    const a = rc.adds.map((id) => DATA.addins.findIndex((q) => q.id === id)).filter((i) => i >= 0);
     const temp = clamp(Math.round(f.temp || 26), 22, 30);
     return {
       v: 1, b, a,
@@ -105,9 +124,10 @@
     const bulk = half(clamp(4.5 - (r.t - 26) * 0.5, 3, 7));
     const folds = 4 + Math.min(r.d, 2);
     const shape = DATA.shapes[r.s] || DATA.shapes[0];
-    const name = (adds.length ? adds.map((a) => a.name).join(" ") + " " : "") + (base.id === "white" ? "" : base.name + " ") + "사워도우";
+    const name = (adds.length ? adds.map((a) => a.name).join(" ") + " " : "") + (base.id === "white" ? (adds.length ? "" : "플레인 ") : base.name + " ") + "사워도우";
+    const ids = adds.map((a) => a.id).join(), known = DATA.recipes.find((q) => q.base === base.id && q.adds.join() === ids);
     return {
-      name, base, adds, hyd, lev, bulk, folds, shape, tier: Math.max(1, ...adds.map((a) => a.tier)),
+      name, base, adds, hyd, lev, bulk, folds, shape, tier: known ? known.tier : Math.max(1, ...adds.map((a) => a.tier)),
       flour: base.flours.map(([n, p]) => n + " " + g(p) + "g").join(" + "),
       water: g(hyd) + "g (" + hyd + "%)",
       levain: g(lev) + "g (" + lev + "%)",

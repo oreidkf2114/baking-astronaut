@@ -1,10 +1,10 @@
 // Solo v2 · 탑승자 — 얼굴 스캔 → 도트 캐릭터, VITAL(생체 신호), 하단 상태창, 사망/재조립
-// 카메라 영상은 32×32 밝기 격자로만 축약되어 이 페이지 메모리에만 남는다. 저장·전송 없음.
+// 카메라 영상은 48×48 도트 격자로만 축약되어 이 페이지 메모리에만 남는다. 저장·전송 없음.
 
 (() => {
   "use strict";
   const { ctx, C, T, Btn, clamp, lerp, R, hash, Snd, P, say, sys } = BA;
-  const G = 32;
+  const G = 48;
 
   // ───── camera ──────────────────────────────────────────────
   const video = document.getElementById("cam");
@@ -31,30 +31,62 @@
   };
   BA.Cam = Cam;
 
-  // ───── face → 32×32 dot grid ───────────────────────────────
+  // ───── face → 48×48 만화 도트 ────────────────────────────
+  // 반환값 = 밝기 격자(Float32Array, 영수증·카드용) + .q(RGBA 만화 도트: 색은 살리되 톤을 5단으로 끊고 윤곽에 잉크 선)
   const sc = document.createElement("canvas"); sc.width = sc.height = G;
   const sx = sc.getContext("2d", { willReadFrequently: true });
-  function sampleFace() {
-    if (!Cam.on || video.readyState < 2 || !video.videoWidth) return null;
-    const vw = video.videoWidth, vh = video.videoHeight, s = Math.min(vw, vh) * 0.82;
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], TONES = 5, EDGE = 1.0;
+  function toon(ln, m, d) {
+    const q = new Uint8ClampedArray(G * G * 4), at = (x, y) => ln[clamp(y, 0, G - 1) * G + clamp(x, 0, G - 1)];
+    const inM = (x, y) => x >= 0 && y >= 0 && x < G && y < G && m[y * G + x] >= 0.5;
+    for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) {
+      const i = y * G + x, o = i * 4;
+      if (m[i] < 0.5) continue;
+      q[o + 3] = 255;
+      // 잉크 선 — 얼굴 테두리, 그리고 밝기가 급히 바뀌는 곳(소벨)
+      const gx = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1);
+      const gy = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1);
+      if (!inM(x - 1, y) || !inM(x + 1, y) || !inM(x, y - 1) || !inM(x, y + 1) || Math.hypot(gx, gy) > EDGE) { q[o] = 18; q[o + 1] = 14; q[o + 2] = 24; continue; }
+      // 셀 셰이딩 — 톤을 5단으로, 경계는 디더로 섞는다
+      const lv = Math.round(clamp(ln[i] + (BAYER[(y & 3) * 4 + (x & 3)] / 16 - 0.47) / (TONES - 1) * 0.9, 0, 1) * (TONES - 1)) / (TONES - 1);
+      const tone = 0.1 + 0.9 * lv;
+      if (d) {
+        const r = d[o] / 255, g = d[o + 1] / 255, b = d[o + 2] / 255, k = Math.min(3.2, tone / Math.max(0.05, r * 0.3 + g * 0.59 + b * 0.11));
+        const gr = (r * 0.3 + g * 0.59 + b * 0.11) * k;
+        q[o] = (gr + (r * k - gr) * 1.35) * 255; q[o + 1] = (gr + (g * k - gr) * 1.35) * 255; q[o + 2] = (gr + (b * k - gr) * 1.35) * 255;
+      } else { const v = 26 + tone * 222; q[o] = v; q[o + 1] = v; q[o + 2] = v * 0.97; }
+    }
+    return q;
+  }
+  // src 를 주면 그 이미지에서, 없으면 카메라에서 뽑는다
+  function sampleFace(src) {
+    let vw, vh;
+    if (src) { vw = src.naturalWidth || src.videoWidth || src.width; vh = src.naturalHeight || src.videoHeight || src.height; }
+    else { if (!Cam.on || video.readyState < 2 || !video.videoWidth) return null; src = video; vw = video.videoWidth; vh = video.videoHeight; }
+    const s = Math.min(vw, vh) * 0.82, n = G * G;
     sx.save(); sx.translate(G, 0); sx.scale(-1, 1);          // 거울
     sx.imageSmoothingEnabled = true; sx.imageSmoothingQuality = "high";
-    sx.drawImage(video, (vw - s) / 2, (vh - s) / 2, s, s, 0, 0, G, G);
+    sx.drawImage(src, (vw - s) / 2, (vh - s) / 2, s, s, 0, 0, G, G);
     sx.restore();
-    const d = sx.getImageData(0, 0, G, G).data, out = new Float32Array(G * G), sorted = [];
-    for (let i = 0; i < G * G; i++) { out[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255; sorted.push(out[i]); }
-    sorted.sort((a, b) => a - b);
-    const lo = sorted[Math.floor(G * G * 0.04)], hi = sorted[Math.floor(G * G * 0.96)], span = Math.max(0.12, hi - lo);
+    const d = sx.getImageData(0, 0, G, G).data, raw = new Float32Array(n);
+    for (let i = 0; i < n; i++) raw[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255;
+    const sorted = raw.slice().sort();
+    const lo = sorted[Math.floor(n * 0.04)], hi = sorted[Math.floor(n * 0.96)], span = Math.max(0.12, hi - lo);
+    const out = new Float32Array(n), ln = new Float32Array(n), m = new Float32Array(n);
     for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) {
       const i = y * G + x, u = (x + 0.5) / G * 2 - 1, v = (y + 0.5) / G * 2 - 1;
-      const m = clamp(1.25 - (u * u * 1.25 + v * v * 0.95) * 1.1, 0, 1);       // 타원 마스크
-      out[i] = Math.pow(clamp((out[i] - lo) / span, 0, 1), 0.85) * Math.min(1, m * 2.2);
+      m[i] = Math.min(1, clamp(1.25 - (u * u * 1.25 + v * v * 0.95) * 1.1, 0, 1) * 2.2);       // 타원 마스크
+      ln[i] = Math.pow(clamp((raw[i] - lo) / span, 0, 1), 0.85);
+      out[i] = ln[i] * m[i];
     }
+    out.q = toon(ln, m, d);
     return out;
   }
   // 카메라 없이 탑승할 때의 기본 승무원 (헬멧)
+  let defFace = null;
   function defaultFace() {
-    const out = new Float32Array(G * G);
+    if (defFace) return defFace;
+    const out = new Float32Array(G * G), m = new Float32Array(G * G);
     for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) {
       const u = (x + 0.5) / G * 2 - 1, v = (y + 0.5) / G * 2 - 1, r = Math.hypot(u * 1.05, v * 1.0);
       let l = 0;
@@ -63,9 +95,10 @@
       if (Math.abs(v + 0.02) < 0.3 && Math.abs(u) < 0.6) l = 0.16;             // 바이저
       if (Math.abs(v + 0.05) < 0.07 && (Math.abs(u - 0.26) < 0.09 || Math.abs(u + 0.26) < 0.09)) l = 1; // 눈
       if (v > 0.5 && v < 0.58 && Math.abs(u) < 0.2) l = 0.25;                  // 입
-      out[y * G + x] = l;
+      out[y * G + x] = l; m[y * G + x] = l > 0.06 ? 1 : 0;
     }
-    return out;
+    out.q = toon(out, m, null);
+    return (defFace = out);
   }
   BA.face = null; BA.faceIsPhoto = false;
   BA.sampleFace = sampleFace; BA.defaultFace = defaultFace;
@@ -73,21 +106,37 @@
   // 도트 초상. dmg 0(정상)~1(위독), dead 0~1(분해 진행), ink = 영수증용 어두운 점
   function drawFace(c, face, x, y, size, o) {
     o = o || {};
-    const cell = size / G, dmg = clamp(o.dmg || 0, 0, 1), dead = o.dead || 0, t = BA.time, k8 = Math.floor(t * 9);
-    if (!o.noBg) { c.fillStyle = o.ink ? "#e9e6dc" : "#0b0b0b"; c.fillRect(x, y, size, size); }
+    const cell = size / G, dmg = clamp(o.dmg || 0, 0, 1), dead = o.dead || 0, t = BA.time, k8 = Math.floor(t * 9), q = face.q;
+    if (!o.noBg) {
+      c.fillStyle = o.ink ? "#e9e6dc" : "#0b0b0b"; c.fillRect(x, y, size, size);
+      if (!o.ink && size > 60) {                               // 만화 망점 배경
+        c.fillStyle = "rgba(255,255,255,0.09)";
+        for (let gy = 1; gy < G; gy += 3) for (let gx = 1 + (gy % 2) * 1.5; gx < G; gx += 3) { const r = cell * (0.25 + 0.9 * gy / G); c.fillRect(x + gx * cell - r / 2, y + gy * cell - r / 2, r, r); }
+      }
+    }
     const col = o.ink ? "20,20,20" : dmg > 0.66 ? "255,96,80" : dmg > 0.33 ? "241,196,83" : "224,224,216";
+    const tint = dmg > 0.66 ? [255, 70, 60] : dmg > 0.33 ? [241, 196, 83] : null, tk = tint ? 0.25 + 0.35 * dmg : 0, des = dmg * 0.7;
     for (let gy = 0; gy < G; gy++) {
       // 손상될수록 가로줄이 밀리고 끊긴다
       const rowJ = !o.ink && hash(gy * 3.1 + k8) < dmg * 0.55 ? (hash(gy + k8 * 1.7) - 0.5) * cell * 9 * dmg : 0;
       for (let gx = 0; gx < G; gx++) {
-        let l = face[gy * G + gx];
-        if (l < 0.06) continue;
+        const i = gy * G + gx;
+        let l = face[i];
+        if (q && !o.ink ? !q[i * 4 + 3] : l < 0.06) continue;
         if (!o.ink && hash(gx * 12.9 + gy * 78.2 + k8 * 0.37) < dmg * 0.4) continue;      // 픽셀 탈락
         let px = x + gx * cell + cell / 2 + rowJ, py = y + gy * cell + cell / 2, a = 1;
         if (dead > 0) {                                                                    // 효모에게 분해된다
           const h = hash(gx * 5.3 + gy * 9.7), d = clamp(dead * 1.6 - h * 0.6, 0, 1);
           px += (h - 0.5) * size * 0.9 * d; py += d * d * size * 0.9; a = 1 - d; l *= 1 - d * 0.5;
           if (a <= 0.02) continue;
+        }
+        if (q && !o.ink) {                                                                 // 만화 도트 — 네모 픽셀
+          let r = q[i * 4], g = q[i * 4 + 1], b = q[i * 4 + 2];
+          if (dmg > 0) { const lum = r * 0.3 + g * 0.59 + b * 0.11; r += (lum - r) * des; g += (lum - g) * des; b += (lum - b) * des; }
+          if (tint) { r += (tint[0] - r) * tk; g += (tint[1] - g) * tk; b += (tint[2] - b) * tk; }
+          c.fillStyle = "rgba(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + "," + a.toFixed(2) + ")";
+          c.fillRect(Math.floor(px - cell / 2), Math.floor(py - cell / 2), Math.ceil(cell), Math.ceil(cell));
+          continue;
         }
         const r = cell * 0.5 * (0.3 + 0.75 * l);
         c.fillStyle = "rgba(" + col + "," + (a * (o.ink ? 0.35 + l * 0.65 : 0.4 + l * 0.6)).toFixed(2) + ")";
@@ -123,22 +172,26 @@
   ];
   function drawAstro(c, x, feetY, s, o) {
     o = o || {};
-    const face = o.face || BA.face || defaultFace(), dmg = o.dmg || 0;
+    const face = o.face || BA.face || defaultFace(), dmg = o.dmg || 0, q = face.q, k = G / 32;
     const fr = o.walk ? 1 + (Math.floor(BA.time * 7) % 2) : 0;
     const rows = ASTRO.concat(LEGS[fr]), x0 = Math.round(x - 5.5 * s), y0 = Math.round(feetY - rows.length * s);
     c.globalAlpha = o.alpha == null ? 1 : clamp(o.alpha, 0, 1);
-    for (let r = 0; r < rows.length; r++) for (let q = 0; q < 11; q++) {
-      const ch = rows[r][q];
+    for (let r = 0; r < rows.length; r++) for (let p = 0; p < 11; p++) {
+      const ch = rows[r][p];
       if (ch === ".") continue;
       if (ch === "H") {
         // 얼굴 격자의 가운데 영역을 5×4 칸으로 평균
-        const fx = q - 3, fy = r - 1;
-        let sum = 0, n = 0;
-        for (let yy = 6 + fy * 5; yy < 11 + fy * 5; yy++) for (let xx = 4 + fx * 5; xx < 9 + fx * 5; xx++) { sum += face[yy * G + xx] || 0; n++; }
-        const l = Math.pow(sum / n, 0.8), v = Math.round(18 + l * 222);
-        c.fillStyle = dmg > 0.66 ? "rgb(" + v + "," + Math.round(v * 0.4) + "," + Math.round(v * 0.35) + ")" : "rgb(" + v + "," + v + "," + Math.round(v * 0.96) + ")";
+        const fx = p - 3, fy = r - 1;
+        let R0 = 0, G0 = 0, B0 = 0, n = 0;
+        for (let yy = Math.floor((6 + fy * 5) * k); yy < Math.floor((11 + fy * 5) * k); yy++) for (let xx = Math.floor((4 + fx * 5) * k); xx < Math.floor((9 + fx * 5) * k); xx++) {
+          const j = (yy * G + xx) * 4; n++;
+          if (q[j + 3]) { R0 += q[j]; G0 += q[j + 1]; B0 += q[j + 2]; }
+        }
+        R0 /= n; G0 /= n; B0 /= n;
+        if (dmg > 0.66) { const v = R0 * 0.3 + G0 * 0.59 + B0 * 0.11; R0 = v; G0 = v * 0.4; B0 = v * 0.35; }
+        c.fillStyle = "rgb(" + (R0 | 0) + "," + (G0 | 0) + "," + (B0 | 0) + ")";
       } else c.fillStyle = ch === "G" ? C.green : ch === "D" ? "#8c8c8c" : C.white;
-      c.fillRect(x0 + q * s, y0 + r * s, s, s);
+      c.fillRect(x0 + p * s, y0 + r * s, s, s);
     }
     c.globalAlpha = 1;
   }
@@ -183,30 +236,67 @@
   };
   BA.Vital = Vital;
 
-  // ───── 하단 상태창 ─────────────────────────────────────────
+  // ───── 하단 상태창 — 에너지 단계마다 모습이 달라진다 ─────
+  //   정상(67~)  : 차분한 테두리, 초록 심전도, 제 색 초상
+  //   불안정(34~): 호박색 점선 테두리, 빠르고 고르지 않은 심전도, 식은땀
+  //   위독(~33)  : 붉게 맥동하는 바탕, 경고 띠, 흐트러진 심전도, 깨지는 초상
+  const beat = (p) => p < 0.08 ? -0.2 * Math.sin(p / 0.08 * Math.PI) : p < 0.12 ? (p - 0.08) / 0.04 : p < 0.16 ? 1 - (p - 0.12) / 0.04 * 1.6
+    : p < 0.2 ? -0.6 + (p - 0.16) / 0.04 * 0.6 : p > 0.35 && p < 0.5 ? 0.18 * Math.sin((p - 0.35) / 0.15 * Math.PI) : 0;
   function panel(dt) {
-    const { H, U } = BA, S = BA.S;
+    const { H, U, time } = BA, S = BA.S;
     shownHp = lerp(shownHp, S.hp, 1 - Math.exp(-dt * 6));
     hitT = Math.max(0, hitT - dt);
-    const fs = Math.round(72 * U), pad = 8, tw = Math.round(176 * U);
-    const w = fs + tw + pad * 3, h = fs + pad * 2, x = 14 + (hitT > 0 ? (R() - 0.5) * 10 : 0), y = H - 48 - h - 10;
-    const dmg = 1 - S.hp / 100, col = S.hp > 66 ? C.white : S.hp > 33 ? C.amber : C.red;
-    ctx.fillStyle = "rgba(8,8,8,0.92)"; ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = hitT > 0 ? C.red : "rgba(255,255,255,0.22)"; ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, w, h);
-    drawFace(ctx, BA.face || defaultFace(), x + pad, y + pad, fs, { dmg: Math.max(dmg, hitT > 0 ? 0.9 : 0) });
+    const tier = S.hp > 66 ? 0 : S.hp > 33 ? 1 : 2, pulse = 0.5 + 0.5 * Math.sin(time * (tier === 2 ? 9 : 4));
+    const fs = Math.round(84 * U), pad = 8, tw = Math.round(176 * U);
+    const jit = hitT > 0 ? 10 : tier === 2 ? 2.5 : 0;
+    const w = fs + tw + pad * 3, h = fs + pad * 2, x = 14 + (R() - 0.5) * jit, y = H - 48 - h - 10 + (R() - 0.5) * jit * 0.4;
+    const dmg = 1 - S.hp / 100, col = tier === 0 ? C.white : tier === 1 ? C.amber : C.red, live = tier === 0 ? C.green : col;
+    ctx.fillStyle = tier === 0 ? "rgba(8,8,8,0.92)" : tier === 1 ? "rgba(24,17,4,0.93)" : "rgba(" + Math.round(26 + pulse * 34) + ",5,5,0.94)";
+    ctx.fillRect(x, y, w, h);
+    if (tier === 2) {                                           // 경고 띠
+      const sw = 10 * U, off = (time * 30) % (sw * 2);
+      ctx.save(); ctx.beginPath(); ctx.rect(x, y - 5 * U, w, 5 * U); ctx.clip();
+      for (let k = -2; k * sw * 2 < w + sw * 2; k++) { ctx.fillStyle = C.red; ctx.fillRect(x + k * sw * 2 + off, y - 5 * U, sw, 5 * U); }
+      ctx.restore();
+    }
+    ctx.strokeStyle = hitT > 0 ? C.red : tier === 0 ? (S.hp >= 90 ? "rgba(160,255,160,0.5)" : "rgba(255,255,255,0.22)") : tier === 1 ? C.amber : (pulse > 0.5 ? C.red : "rgba(232,57,42,0.4)");
+    ctx.lineWidth = tier === 2 ? 2 : 1; if (tier === 1) ctx.setLineDash([6, 4]);
+    ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, w, h); ctx.setLineDash([]); ctx.lineWidth = 1;
+    const fx0 = x + pad, fy0 = y + pad;
+    drawFace(ctx, BA.face || defaultFace(), fx0, fy0, fs, { dmg: Math.max(dmg, hitT > 0 ? 0.9 : 0) });
+    if (tier > 0) {                                             // 식은땀
+      const d = fs / 20;
+      for (let k = 0; k < tier; k++) {
+        const q = (time * (0.6 + k * 0.25) + k * 0.5) % 1, dx = fx0 + fs * (k ? 0.14 : 0.8), dy = fy0 + fs * (0.1 + 0.34 * q);
+        ctx.fillStyle = "rgba(140,210,255," + (1 - q).toFixed(2) + ")";
+        ctx.fillRect(dx, dy, d, d); ctx.fillRect(dx - d / 2, dy + d, d * 2, d * 1.6);
+      }
+    }
+    if (tier === 2 && pulse > 0.5) T("!", fx0 + fs - 9 * U, fy0 + 11 * U, { size: 16, bold: true, color: C.red });
+    if (S.hp >= 90 && Math.sin(time * 3) > 0.3) T("✦", fx0 + fs - 8 * U, fy0 + 9 * U, { size: 10, color: C.green });
     const tx = x + fs + pad * 2;
     T(S.name, tx, y + pad + 7 * U, { size: 11, align: "left", bold: true, color: C.text });
-    T("VITAL", tx, y + pad + 26 * U, { size: 9, align: "left", color: C.dim });
-    T(String(Math.round(shownHp)).padStart(3, "0"), tx + tw, y + pad + 26 * U, { size: 12, align: "right", bold: true, color: col });
-    const by = y + pad + 36 * U, seg = 10, sw = (tw - (seg - 1) * 2) / seg;
+    T("VITAL", tx, y + pad + 24 * U, { size: 9, align: "left", color: C.dim });
+    T(String(Math.round(shownHp)).padStart(3, "0"), tx + tw, y + pad + 24 * U, { size: 12, align: "right", bold: true, color: col });
+    const by = y + pad + 32 * U, seg = 10, sw = (tw - (seg - 1) * 2) / seg;
     for (let i = 0; i < seg; i++) {
       const on = shownHp / 100 * seg > i + 0.05;
-      ctx.fillStyle = on ? col : "rgba(255,255,255,0.1)";
+      ctx.fillStyle = on ? (tier === 2 && pulse < 0.5 ? "rgba(232,57,42,0.5)" : col) : "rgba(255,255,255,0.1)";
       ctx.fillRect(tx + i * (sw + 2), by, sw, 7 * U);
     }
-    T("상태 · " + Vital.state() + (BA.Hands && BA.Hands.on ? "   HAND ●" : ""), tx, y + pad + 56 * U, { size: 10, align: "left", bold: true, color: col });
-    T(S.log, tx, y + pad + 70 * U, { size: 9, align: "left", color: hitT > 0 ? C.red : C.dim });
+    // 심전도
+    const ey = y + pad + 54 * U, eh = 9 * U, rate = tier === 0 ? 1.1 : tier === 1 ? 1.9 : 3;
+    ctx.strokeStyle = live; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let px = 0; px <= tw; px += 2) {
+      const ph = time * rate - px / tw * 2.4, n = Math.floor(ph);
+      let v = S.hp <= 0 ? 0 : beat(ph - n);
+      if (tier === 1) v *= 0.55 + 0.7 * hash(n * 3.3);
+      if (tier === 2) v = v * (hash(n * 7.3) < 0.3 ? 0.1 : 1.25) + (hash(px * 1.7 + Math.floor(time * 20)) - 0.5) * 0.4;
+      if (px) ctx.lineTo(tx + tw - px, ey - v * eh); else ctx.moveTo(tx + tw, ey - v * eh);
+    }
+    ctx.stroke(); ctx.lineWidth = 1;
+    if (tier < 2 || pulse > 0.35) T((tier === 0 ? "♥ " : tier === 1 ? "△ " : "✕ ") + "상태 · " + Vital.state() + (BA.Hands && BA.Hands.on ? "   HAND ●" : ""), tx, y + pad + 70 * U, { size: 10, align: "left", bold: true, color: live });
+    T(S.log, tx, y + pad + 83 * U, { size: 9, align: "left", color: hitT > 0 ? C.red : C.dim });
     // 위독 — 심장 박동음
     if (S.hp < 34 && !BA.dead) { beatT -= dt; if (beatT <= 0) { beatT = S.hp < 15 ? 0.5 : 0.8; Snd.blip(58, 0.14, "sine", 0.2, 40, false); setTimeout(() => Snd.blip(50, 0.12, "sine", 0.14, 36, false), 130); } }
   }
