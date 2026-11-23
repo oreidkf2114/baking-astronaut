@@ -14,7 +14,7 @@
       if (this.on) return true;
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("이 브라우저는 카메라를 지원하지 않습니다");
-        this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" }, audio: false });
+        this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: "user" }, audio: false });
         video.srcObject = this.stream;
         await video.play();
         this.on = true; this.err = "";

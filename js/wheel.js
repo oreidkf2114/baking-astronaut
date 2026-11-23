@@ -1,6 +1,6 @@
 // Solo v2 · 디지털 물레
 //   타깃  : 공연판 15종 전부(매번 조금씩 변주) + 절차 생성 "변이종"(매번 새로운 형태)
-//   조작  : 마우스(높이=슬라이스, 중심축 거리=반지름) 또는 MediaPipe 양손 BRACKET(공연판과 동일)
+//   조작  : 마우스(높이=슬라이스, 중심축 거리=반지름) 또는 MediaPipe 손(간격=폭, 높이=슬라이스, 한 손도 가능)
 //   실패  : 합격선 미달이면 효모가 거부 → VITAL 피해. 0 이 되면 사망.
 
 (() => {
@@ -8,6 +8,7 @@
   const { ctx, C, T, Btn, clear, clamp, lerp, R, Snd, P, say, sys } = BA;
 
   const N = 48, MIN_R = 0.08, MAX_R = 0.6;
+  const HY0 = 0.2, HY1 = 0.7;            // 손 인식: 카메라 세로의 이 구간이 점토의 위~아래
   let DURATION = 90, PASS = 65;          // 난이도에 따라 begin() 에서 정해진다
   const mk = (fn) => { const p = new Float32Array(N); for (let i = 0; i < N; i++) p[i] = clamp(fn(i / (N - 1)), MIN_R, MAX_R); return p; };
   const gauss = (t, c, w) => Math.exp(-Math.pow((t - c) * w, 2));
@@ -187,7 +188,7 @@
   BA.PROFILE_N = N;
 
   BA.add({
-    id: "wheel", mood: "wheel", cursor: "none", hint: "마우스: 누른 채 위아래 · 휠 = 손 넓이   |   손 인식: 양손으로 점토를 감싸기 · 핀치 = 정밀",
+    id: "wheel", mood: "wheel", cursor: "none", hint: "마우스: 누른 채 위아래 · 휠 = 손 넓이   |   손 인식: 손 간격 = 폭 · 손 높이 = 빚는 높이 · 한 손도 가능 · 핀치 = 정밀",
     enter() {
       if (!BA.S.tg) BA.S.tg = pickTarget();
       this.round = 1;
@@ -201,7 +202,7 @@
       this.g = BA.S.tg;
       this.p = initial(); this.base = dist(this.p, this.g.profile);
       this.t = 0; this.rot = 0; this.brush = 2.6; this.score = 0; this.sm = 0;
-      this.state = "run"; this.left = DURATION; this.touched = false; this.fr = 0; this.rt = 0; this.wasHot = false; this.con = null; this.passed = false;
+      this.state = "run"; this.left = DURATION; this.touched = false; this.fr = 0; this.rt = 0; this.wasHot = false; this.con = null; this.passed = false; this.eng = 0; this.autoT = 0; this.wasOk = false; this.lastHand = false;
       Snd.drone(98, 0.045, 380);
       if (announce) say((this.handOnly ? "이번에는 손으로 빚습니다. " : "") + "효모가 요청한 그릇은 " + this.g.name.replace(/ #.*/, "") + "입니다. 점선에 맞춰 점토를 빚으세요. 실패하면 효모가 거부합니다.");
       sys("디지털 물레 · " + this.g.name + " · 합격선 " + PASS + "% · " + DURATION + "초");
@@ -234,6 +235,10 @@
       T("두 번째 그릇은 손으로 빚는다", W / 2, H * 0.56, { size: 24, bold: true, color: C.white });
       T("「 " + this.g.name + " 」 · 카메라 앞에서 양손으로 점토를 감싸듯 — 마우스는 듣지 않는다", W / 2, H * 0.56 + 30 * U, { size: 12, color: C.dim });
       if (hd.on) {
+        const pw = Math.min(220 * U, W * 0.22), n = hd.seen();
+        hd.preview(ctx, W - 24 - pw, H * 0.22, pw, pw * 0.75, [HY0, HY1]);
+        T(n ? "손 " + n + "개 인식됨" : "손을 카메라에 보여 주세요", W - 24 - pw / 2, H * 0.22 + pw * 0.75 + 14 * U, { size: 10, bold: true, color: n ? C.green : C.amber });
+        T("초록 띠 안 = 빚는 높이 · 한 손으로도 됩니다", W - 24 - pw / 2, H * 0.22 + pw * 0.75 + 30 * U, { size: 9, color: C.dim });
         if (Btn("[ 손으로 빚기 시작 ▶ ]", W / 2, H * 0.72, { size: 16, color: C.green })) this.begin(true);
       } else {
         if (Btn(hd.loading ? "손 인식 불러오는 중…" : "[ 손 인식 켜기 ]", W / 2, H * 0.72, { size: 16, color: C.green }) && !hd.loading) hd.enable();
@@ -242,6 +247,62 @@
           if (Btn("카메라 없이 마우스로 (합격선 85% · 기록에 표시)", W / 2, H * 0.72 + 76 * U, { size: 11 })) { BA.S.noHands = true; this.begin(true); }
         }
       }
+    },
+    exit() { if (BA.Hands) BA.Hands.quiet = false; },
+    // 빚는 동안의 시각효과 — 일치 눈금, 오라, 흙물 고리, 접촉 아크, 손 골격, 카메라 미리보기
+    fxRun(g, sN, ok) {
+      const { W, H, U, time } = BA, hd = BA.Hands, hs = !this.mouseOnly && hd && hd.on ? hd.list : [], con = this.con, tg = this.g.profile;
+      hd.quiet = hs.length > 0;
+      // 층마다의 일치 눈금 — 맞은 층은 초록으로 잠긴다
+      for (let i = 1; i < N; i += 2) {
+        const d = Math.abs(this.p[i] - tg[i]), yy = g.bot - (i + 0.5) / N * g.h, gx = tg[i] * g.scale, good = d < 0.03;
+        ctx.fillStyle = good ? "rgba(160,255,160,0.95)" : d < 0.08 ? "rgba(241,196,83,0.65)" : "rgba(232,57,42,0.5)";
+        for (const sd of [-1, 1]) ctx.fillRect(g.cx + sd * gx - (good ? 4 : 1.5), yy - 1, good ? 8 : 3, 2);
+      }
+      // 일치도가 오를수록 물레판에서 번져 나오는 오라
+      for (let k = 0; k < 3; k++) {
+        const q = (time * 0.5 + k / 3) % 1, rr = g.scale * (0.7 + q * 0.7);
+        ctx.strokeStyle = "rgba(" + (ok ? "160,255,160" : "216,216,216") + "," + (sN * (1 - q) * 0.55).toFixed(3) + ")"; ctx.lineWidth = 1 + sN * 2;
+        ctx.beginPath(); ctx.ellipse(g.cx, g.bot + 6, rr, rr * 0.16, 0, 0, 6.283); ctx.stroke();
+      }
+      ctx.lineWidth = 1;
+      // 그릇을 감아 도는 흙물 알갱이
+      for (let k = 0; k < 36; k++) {
+        const i = (k * 7) % N, a = this.rot * (0.6 + (k % 5) * 0.12) + k * 1.7, co = Math.cos(a), rp = this.p[i] * g.scale * (1.1 + 0.08 * Math.sin(time * 2 + k));
+        ctx.fillStyle = "rgba(" + (ok ? "190,255,190" : "236,226,204") + "," + (co > 0 ? 0.75 : 0.18).toFixed(2) + ")";
+        ctx.fillRect(g.cx + Math.sin(a) * rp, g.bot - (i + 0.5) / N * g.h + co * rp * 0.1, co > 0 ? 3 : 2, 2);
+      }
+      // 손(또는 마우스)이 닿은 높이 — 점토 표면으로 튀는 아크
+      if (con) {
+        const cr = this.p[clamp(Math.round((g.bot - con.y) / g.h * N - 0.5), 0, N - 1)] * g.scale, hand = hs.length > 0;
+        ctx.strokeStyle = hand ? "rgba(160,255,160,0.9)" : "rgba(255,190,110,0.85)"; ctx.lineWidth = 1.5; ctx.shadowColor = hand ? C.green : "#ffb060"; ctx.shadowBlur = 12;
+        for (const sd of [-1, 1]) {
+          const x0 = g.cx + sd * (con.r + 14), x1 = g.cx + sd * cr;
+          ctx.beginPath(); ctx.moveTo(x0, con.y);
+          for (let j = 1; j <= 5; j++) ctx.lineTo(lerp(x0, x1, j / 5), con.y + (j < 5 ? (R() - 0.5) * 16 * U : 0));
+          ctx.stroke();
+        }
+        ctx.shadowBlur = 0; ctx.lineWidth = 1;
+        if (R() < 0.5) BA.fx.spark(g.cx + (R() < 0.5 ? -1 : 1) * cr, con.y, (R() - 0.5) * 60, -60 - R() * 120, hand ? "160,255,160" : "255,190,110", 0.6, 2, 120);
+      }
+      if (!hs.length) return;
+      // 손 골격을 점토 양옆에 띄운다 (빚는 높이에 맞춰)
+      const cy0 = con ? con.y : null, rr0 = con ? con.r : g.scale * 0.5, S = g.h * 1.25;
+      ctx.lineWidth = 2; ctx.shadowColor = C.green; ctx.shadowBlur = con ? 14 : 4;
+      hs.forEach((h, idx) => {
+        const side = hs.length === 2 ? (h === hd.two()[0] ? -1 : 1) : (h.nx < 0.5 ? -1 : 1);
+        let px = 0, py = 0; for (const i of [0, 5, 9, 13, 17]) { px += h.npts[i].x; py += h.npts[i].y; } px /= 5; py /= 5;
+        const ax = g.cx + side * (rr0 + 54 * U), ay = cy0 != null ? cy0 : lerp(g.top, g.bot, clamp((h.ny - HY0) / (HY1 - HY0), -0.2, 1.3));
+        ctx.strokeStyle = "rgba(160,255,160," + (con ? 0.9 : 0.35) + ")"; ctx.beginPath();
+        for (const [p, q] of hd.BONES) { ctx.moveTo(ax + (h.npts[p].x - px) * S, ay + (h.npts[p].y - py) * S * 0.75); ctx.lineTo(ax + (h.npts[q].x - px) * S, ay + (h.npts[q].y - py) * S * 0.75); }
+        ctx.stroke();
+        if (hs.length === 1) { ctx.globalAlpha = 0.25; ctx.beginPath(); for (const [p, q] of hd.BONES) { ctx.moveTo(g.cx - side * (rr0 + 54 * U) - (h.npts[p].x - px) * S, ay + (h.npts[p].y - py) * S * 0.75); ctx.lineTo(g.cx - side * (rr0 + 54 * U) - (h.npts[q].x - px) * S, ay + (h.npts[q].y - py) * S * 0.75); } ctx.stroke(); ctx.globalAlpha = 1; }   // 한 손이면 반대편에 거울 손
+      });
+      ctx.shadowBlur = 0; ctx.lineWidth = 1;
+      // 카메라 미리보기
+      const pw = Math.min(190 * U, W * 0.2), px0 = W - 24 - pw, py0 = H * 0.22 + 96 * U, n = hd.seen();
+      hd.preview(ctx, px0, py0, pw, pw * 0.75, [HY0, HY1]);
+      T(n ? "손 " + n + "개 인식" + (con ? " · 빚는 중" : " · 띠 안으로") : "손이 보이지 않습니다", px0 + pw / 2, py0 + pw * 0.75 + 13 * U, { size: 9, bold: true, color: n ? C.green : C.amber });
     },
     geom() {
       const { W, H } = BA;
@@ -253,17 +314,29 @@
       if (this.state !== "run") { this.rt += dt; return; }
       const g = this.geom(), U = BA.U;
       if (P.wheel) this.brush = clamp(this.brush - P.wheel * 0.4, 0.9, 6);
-      const handPtr = !!(BA.Hands && BA.Hands.cur.active), mouseOk = this.handOnly ? handPtr : this.mouseOnly ? !handPtr : true;
-      const two = !this.mouseOnly && BA.Hands && BA.Hands.two();
-      let y = null, r = 0, sigma = this.brush, mode = "";
-      if (two) {                                                    // 양손 BRACKET (공연판 방식)
-        const ym = (two[0].y + two[1].y) / 2, pin = (two[0].pinch + two[1].pinch) / 2;
-        if (ym > g.top - 30 * U && ym < g.bot + 20 * U) {
-          y = ym; r = Math.abs(two[1].x - two[0].x) / 2 / g.scale;
-          sigma = lerp(this.brush, 0.9, pin); mode = pin > 0.5 ? "PINCH" : "BRACKET";
-        }
+      const hd = BA.Hands, hs = !this.mouseOnly && hd && hd.on ? hd.list : [];
+      const handPtr = !!(hd && hd.cur.active), mouseOk = this.handOnly ? false : this.mouseOnly ? !handPtr : !hs.length;
+      let y = null, r = 0, sigma = this.brush, mode = "", wgt = 1;
+      if (!hs.length) this.eng = 0;
+      if (hs.length) {
+        // 손 — 화면 위 좌표가 아니라 "카메라 안에서의 위치"로 읽는다.
+        //   높이: 카메라 세로 HY0~HY1 구간이 점토 위~아래. 그보다 아래로 내리면 쉼(버튼 누르기).
+        //   폭  : 두 손이면 손 사이 간격, 한 손이면 화면 중심에서의 거리. 편하게 벌린 폭(0.1~0.6)이 그릇의 최소~최대 반지름.
+        //   → 좁은 목을 만들 때도 두 손이 맞닿지 않아 인식이 끊기지 않는다.
+        let ny = 0, pin = 0;
+        for (const h of hs) { ny += h.ny; pin += h.pinch; }
+        ny /= hs.length; pin /= hs.length;
+        const sep = hs.length === 2 ? Math.abs(hs[0].nx - hs[1].nx) : Math.abs(hs[0].nx - 0.5) * 2;
+        if (ny > HY0 - 0.04 && ny < HY1 + 0.03) {
+          y = lerp(g.top, g.bot, clamp((ny - HY0) / (HY1 - HY0), 0, 1));
+          r = lerp(MIN_R, MAX_R, clamp((sep - 0.1) / 0.5, 0, 1));
+          sigma = lerp(Math.max(this.brush, 3.2), 1.1, pin);
+          mode = (hs.length === 2 ? "양손" : "한 손") + (pin > 0.5 ? " · 정밀" : "");
+          this.eng = Math.min(1, (this.eng || 0) + dt / 0.4); wgt = this.eng;      // 손이 들어올 때 갑자기 뭉개지지 않게 서서히 잡는다
+          this.lastHand = true;
+        } else this.eng = 0;
       } else if (mouseOk && P.down && !this.wasHot && P.y > g.top - 26 * U && P.y < g.bot + 16 * U && Math.abs(P.x - g.cx) < g.scale * 0.95) {
-        y = P.y; r = Math.abs(P.x - g.cx) / g.scale; mode = "SINGLE";
+        y = P.y; r = Math.abs(P.x - g.cx) / g.scale; mode = "SINGLE"; this.lastHand = false;
         if (BA.Hands && BA.Hands.cur.active) sigma = this.brush * 0.8;
       }
       this.mode = mode; this.con = null;
@@ -271,7 +344,7 @@
         this.touched = true;
         r = clamp(r, MIN_R, MAX_R);
         const y0 = clamp((g.bot - y) / g.h * N - 0.5, 0, N - 1);
-        applyShape(this.p, y0, r, 1 - Math.exp(-dt * 3.4), sigma);
+        applyShape(this.p, y0, r, (1 - Math.exp(-dt * (hs.length ? 4.4 : 3.4))) * wgt, sigma);
         smooth(this.p, Math.min(0.3, 0.035 * BA.fs));
         this.con = { y, r: r * g.scale, sigma };
         const cr = this.p[Math.round(y0)] * g.scale;
@@ -285,6 +358,12 @@
       if (this.touched) this.left -= dt;
       this.score = matchScore(this.p, this.g.profile, this.base);
       this.sm = lerp(this.sm, this.score, 1 - Math.exp(-dt * 7));
+      // 합격선을 처음 넘는 순간
+      const okNow = this.sm >= PASS;
+      if (okNow && !this.wasOk && this.touched) { Snd.chord([659, 880], 0.05); BA.fx.shock(g.cx, g.cy, "160,255,160", 300); BA.fx.burst(g.cx, g.cy, 40, "160,255,160", 260, 0.8, 3); sys("합격선 통과 — 더 다듬거나 건네라."); }
+      this.wasOk = okNow;
+      // 손으로 빚는 중에는 클릭이 어렵다 — 합격선을 넘긴 채 손을 내리고 3초 있으면 저절로 건넨다
+      if (this.lastHand && okNow && y == null && this.touched) { this.autoT += dt; if (this.autoT >= 3) return this.finish(); } else this.autoT = 0;
       if (this.left < 10 && this.left > 0 && Math.floor(this.left) !== Math.floor(this.left + dt)) Snd.blip(880, 0.06, "square", 0.05);
       if (this.left <= 0) this.finish();
     },
@@ -304,6 +383,7 @@
       else { ctx.globalAlpha = clamp(1 - this.rt * 1.4, 0.15, 1); drawVessel(this.p, g.cx, g.cy + this.rt * 14, g.h, this.rot, false); ctx.globalAlpha = 1; }
       const flick = 0.78 + 0.22 * Math.sin(time * 5) * Math.cos(time * 3.1);
       hologram(this.g.profile, g.cx, g.cy, g.h, 45 + sN * 80, run ? flick : 0.3, time);
+      if (run) this.fxRun(g, sN, ok);
 
       T("PAGE 4 — DIGITAL WHEEL" + (BA.D.rounds === 2 ? (this.round === 1 ? " · 1차 마우스" : this.handOnly ? " · 2차 손 인식" : " · 2차 (마우스 대체)") : ""), W / 2, 96, { size: 13, color: C.dim });
       T("TARGET · " + (this.g.kind === "mutant" ? "변이종" : "고전 " + BA.classicCount + "종"), 24, H * 0.22, { size: 11, align: "left", color: C.dim });
@@ -322,8 +402,9 @@
         T(this.touched ? "0" + Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0") : "첫 터치부터 " + DURATION + "초", W / 2, 96 + 28 * U,
           { size: urgent ? 24 : 17, bold: true, color: urgent ? (Math.sin(time * 14) > 0 ? C.red : C.amber) : C.text });
         if (this.mode) T(this.mode, W / 2, 96 + 52 * U, { size: 10, color: C.dim });
+        if (this.autoT > 0.3) T("손을 내린 채 " + Math.max(1, Math.ceil(3 - this.autoT)) + "초 — 이대로 효모에게 건넵니다", W / 2, g.bot + 44 * U, { size: 15, bold: true, color: C.green });
         // 두 손(괄호)
-        const two = !this.mouseOnly && BA.Hands && BA.Hands.two();
+        const two = null;
         let cy0 = null, rr = 0, act = !!this.con;
         if (this.con) { cy0 = this.con.y; rr = this.con.r; }
         else if (two) { cy0 = (two[0].y + two[1].y) / 2; rr = Math.abs(two[1].x - two[0].x) / 2; }
@@ -341,8 +422,8 @@
         }
         if (!this.touched) {
           const a = 0.6 + 0.4 * Math.sin(time * 3), hand = this.handOnly || (!this.mouseOnly && BA.Hands && BA.Hands.on);
-          T(hand ? "① 양손을 화면에 넣고 점토를 감싸듯 좌우로 벌렸다 좁혔다" : "① 점토 옆에서 마우스를 누른 채 위아래로 천천히", W / 2, g.bot + 40 * U, { size: 14, bold: true, alpha: a });
-          T(hand ? "② 양손 높이 = 빚는 높이 · 간격 = 폭   ③ 엄지+검지를 붙이면 정밀" : "② 중심에서 멀어지면 넓어지고, 가까우면 좁아진다   ③ 마우스 휠 = 손 넓이", W / 2, g.bot + 60 * U, { size: 11, color: C.dim });
+          T(hand ? "① 카메라에 손을 보이고 좌우로 벌렸다 좁혔다 — 손 사이 간격이 그릇의 폭" : "① 점토 옆에서 마우스를 누른 채 위아래로 천천히", W / 2, g.bot + 40 * U, { size: 14, bold: true, alpha: a });
+          T(hand ? "② 손 높이 = 빚는 높이 (한 손이면 중심에서의 거리 = 폭)   ③ 엄지+검지 = 정밀 · 손을 내리면 쉼" : "② 중심에서 멀어지면 넓어지고, 가까우면 좁아진다   ③ 마우스 휠 = 손 넓이", W / 2, g.bot + 60 * U, { size: 11, color: C.dim });
         }
         this.wasHot = false;
         const by2 = H - 84;
