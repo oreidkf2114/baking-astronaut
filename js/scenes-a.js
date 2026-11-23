@@ -41,7 +41,23 @@
       this.depart();
     },
     pickUI() {
-      const { W, H, U } = BA, cw = Math.min(250 * U, W * 0.29), ch = 196 * U, gap = 14 * U, x0 = W / 2 - (cw * 3 + gap * 2) / 2, y0 = H * 0.36;
+      const { W, H, U } = BA;
+      if (BA.mobile) {                                        // 핸드폰 — 카드를 세로로 쌓는다
+        const cw = W - 32, ch = Math.min(128, H * 0.155), y0 = H * 0.3;
+        T("난이도를 고르세요", W / 2, H * 0.27, { size: 17, bold: true, color: C.white });
+        BA.DIFFS.forEach((d, i) => {
+          const x = 16, y = y0 + i * (ch + 10), hov = BA.inRect(P.x, P.y, x, y, cw, ch), col = i === 0 ? C.green : i === 1 ? C.white : C.red;
+          ctx.fillStyle = "rgba(8,8,8,0.85)"; ctx.fillRect(x, y, cw, ch);
+          ctx.strokeStyle = col; ctx.strokeRect(x + 0.5, y + 0.5, cw, ch);
+          T(d.name, x + 14, y + 22, { size: 22, bold: true, color: col, align: "left" });
+          T("LV " + (i + 1), x + cw - 12, y + 22, { size: 11, color: C.dim, align: "right" });
+          d.lines.forEach((l, k) => T("· " + l, x + 14, y + 46 + k * ((ch - 54) / 3.2), { size: 12, color: k === 3 && i === 2 ? C.amber : C.text, align: "left", one: true }));
+          if (hov && P.click) this.pick(i);
+        });
+        if (Btn("◀ 뒤로", W / 2, y0 + 3 * (ch + 10) + 24, { size: 12 })) { this.mode = this.prev; nameBox.hidden = false; }
+        return;
+      }
+      const cw = Math.min(250 * U, W * 0.29), ch = 196 * U, gap = 14 * U, x0 = W / 2 - (cw * 3 + gap * 2) / 2, y0 = H * 0.36;
       T("난이도를 고르세요", W / 2, H * 0.3, { size: 17, bold: true, color: C.white });
       BA.DIFFS.forEach((d, i) => {
         const x = x0 + i * (cw + gap), hov = BA.inRect(P.x, P.y, x, y0, cw, ch), col = i === 0 ? C.green : i === 1 ? C.white : C.red;
@@ -117,7 +133,7 @@
         if (Btn("[ 탑승 수속 시작 ▶ ]", W / 2 + 70 * U, by, { size: 16, color: C.green })) this.board();
       }
       const hand = BA.Hands;
-      if (Btn("손 인식 조작 : " + (hand.loading ? "불러오는 중…" : hand.on ? "ON (손바닥 = 포인터 · 핀치 = 클릭)" : "OFF — 눌러서 켜기"), W / 2, H * 0.845, { size: 11, color: hand.on ? C.green : C.dim })) hand.toggle();
+      if (!BA.mobile && Btn("손 인식 조작 : " + (hand.loading ? "불러오는 중…" : hand.on ? "ON (손바닥 = 포인터 · 핀치 = 클릭)" : "OFF — 눌러서 켜기"), W / 2, H * 0.845, { size: 11, color: hand.on ? C.green : C.dim })) hand.toggle();
       T(this.msg || hand.err || "카메라 영상은 이 브라우저 안에서만 처리되며 저장·전송되지 않습니다. 이름은 체험자 기록(크레딧)에 남습니다.", W / 2, H * 0.9, { size: 10, color: this.msg || hand.err ? C.amber : C.ghost });
     },
   });

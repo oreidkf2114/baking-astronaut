@@ -37,6 +37,10 @@ window.BA = (() => {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.imageSmoothingEnabled = false;
     BA.U = clamp(Math.min(BA.W / 1280, BA.H / 720), 0.55, 1.8);
+    // 핸드폰(세로로 좁은 화면) — 글자·도형 배율을 화면 폭에 맞춰 키운다
+    BA.touch = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    BA.mobile = BA.W < 700 && BA.H > BA.W;
+    if (BA.mobile) BA.U = clamp(BA.W / 500, 0.66, 0.95);
   }
   window.addEventListener("resize", resize);
   resize();
@@ -58,15 +62,37 @@ window.BA = (() => {
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
 
   // ───── drawing helpers ─────────────────────────────────────
-  function setFont(size, bold) { ctx.font = (bold ? "700 " : "") + Math.max(8, Math.round(size * BA.U)) + "px " + FONT; }
+  const fontPx = (size) => Math.max(BA.mobile ? 9 : 8, Math.round(size * BA.U));
+  function setFont(size, bold) { ctx.font = (bold ? "700 " : "") + fontPx(size) + "px " + FONT; }
+  // 터치 기기에서는 마우스 말투를 손가락 말투로 바꿔 읽는다
+  const touchWords = (s) => s.replace("마우스를 움직여", "화면을 문질러").replace("마우스: 누른 채", "누른 채").replace(" · 휠 = 손 넓이", "").replace(/마우스/g, "손가락").replace(/클릭/g, "터치");
 
   function T(s, x, y, o) {
     o = o || {};
+    if (BA.touch && typeof s === "string") s = touchWords(s);
     setFont(o.size || 14, o.bold);
-    ctx.textAlign = o.align || "center";
+    const al = o.align || "center";
+    ctx.textAlign = al;
     ctx.textBaseline = o.base || "middle";
     ctx.globalAlpha = o.alpha == null ? 1 : clamp(o.alpha, 0, 1);
     ctx.fillStyle = o.color || C.text;
+    // 좁은 화면 — 넘치는 글은 두 줄로 나누고, 그래도 넘치면 글자를 줄인다
+    if (BA.mobile && typeof s === "string") {
+      const room = Math.max(60, al === "center" ? 2 * Math.min(x, BA.W - x) - 10 : al === "left" ? BA.W - x - 6 : x - 6), w = ctx.measureText(s).width;
+      if (w > room) {
+        const px = fontPx(o.size || 14), shrink = (ww) => { ctx.font = (o.bold ? "700 " : "") + Math.max(7, Math.floor(px * room / ww)) + "px " + FONT; };
+        let cut = -1;
+        if (!o.one && w > room * 1.2) for (let i = 1; i < s.length - 1; i++) if (s[i] === " " && (cut < 0 || Math.abs(i - s.length / 2) < Math.abs(cut - s.length / 2))) cut = i;
+        if (cut > 0) {
+          const a = s.slice(0, cut), b = s.slice(cut + 1), w2 = Math.max(ctx.measureText(a).width, ctx.measureText(b).width);
+          if (w2 > room) shrink(w2);
+          ctx.fillText(a, x, y - px * 0.62); ctx.fillText(b, x, y + px * 0.62);
+          ctx.globalAlpha = 1;
+          return;
+        }
+        shrink(w);
+      }
+    }
     ctx.fillText(s, x, y);
     ctx.globalAlpha = 1;
   }
@@ -81,12 +107,24 @@ window.BA = (() => {
   const inRect = (px, py, x, y, w, h) => px >= x && px <= x + w && py >= y && py <= y + h;
 
   // immediate-mode 버튼: 그리면서 클릭 여부를 돌려준다
+  const btnRects = [];
   function Btn(label, cx, cy, o) {
     o = o || {};
     const fs = o.size || 14;
     setFont(fs, true);
-    const w = o.w || ctx.measureText(label).width + 40 * BA.U;
-    const h = o.h || fs * BA.U * 2.7;
+    if (BA.touch) label = touchWords(label);
+    let w = o.w || ctx.measureText(label).width + 40 * BA.U;
+    const h = Math.max(o.h || fs * BA.U * 2.7, BA.mobile ? 34 : 0);       // 손가락으로 누를 수 있는 높이
+    if (BA.mobile) {
+      // 화면 밖으로 나가지 않게 하고, 같은 줄의 다른 버튼과 겹치면 한 줄 위로 올린다
+      w = Math.min(w, BA.W - 16); cx = clamp(cx, w / 2 + 8, BA.W - w / 2 - 8);
+      for (let n = 0; n < 6; n++) {
+        const hit = btnRects.find((r) => Math.abs(r.cx - cx) < (r.w + w) / 2 + 4 && Math.abs(r.cy - cy) < (r.h + h) / 2 + 2);
+        if (!hit) break;
+        cy = hit.cy - (hit.h + h) / 2 - 8;
+      }
+      btnRects.push({ cx, cy, w, h });
+    }
     const x = cx - w / 2, y = cy - h / 2;
     const hov = !o.disabled && !BA.locked && inRect(P.x, P.y, x, y, w, h);
     if (hov) BA.hot = true;
@@ -96,7 +134,7 @@ window.BA = (() => {
     else { ctx.fillStyle = "rgba(8,8,8,0.82)"; ctx.fillRect(x, y, w, h); }
     ctx.strokeStyle = col;
     ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
-    T(label, cx, cy + 1, { size: fs, bold: true, color: hov ? C.bg : col });
+    T(label, cx, cy + 1, { size: fs, bold: true, color: hov ? C.bg : col, one: true });
     if (hov && P.click) { Snd.blip(880, 0.05, "square", 0.05); return true; }
     return false;
   }
@@ -428,7 +466,7 @@ window.BA = (() => {
   const sysEl = document.getElementById("sys");
   const hintEl = document.getElementById("hint");
   function sys(msg) { sysEl.textContent = "> " + msg; }
-  function hint(msg) { hintEl.textContent = msg; }
+  function hint(msg) { hintEl.textContent = BA.touch ? touchWords(msg) : msg; }
 
   // ───── run state ───────────────────────────────────────────
   function reset() {
@@ -499,7 +537,7 @@ window.BA = (() => {
       if (fade >= 1) { fade = 1; fadeDir = -1; swap(); }
     } else if (fade > 0) fade = Math.max(0, fade - dt * 1.8);
     BA.locked = pending != null;
-    BA.hot = false;
+    BA.hot = false; btnRects.length = 0;
     Music.tick(dt);
     if (BA.pre) BA.pre(dt);                      // 손 인식 → 포인터
     const sc = scenes[cur];

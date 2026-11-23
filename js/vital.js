@@ -278,6 +278,23 @@
     shownHp = lerp(shownHp, S.hp, 1 - Math.exp(-dt * 6));
     hitT = Math.max(0, hitT - dt);
     const tier = S.hp > 66 ? 0 : S.hp > 33 ? 1 : 2, pulse = 0.5 + 0.5 * Math.sin(time * (tier === 2 ? 9 : 4));
+    if (BA.mobile) {
+      // 핸드폰 — 왼쪽 위(HUD 자리)에 작게: 초상 + 이름 + VITAL 막대 + 상태
+      const col = tier === 0 ? C.white : tier === 1 ? C.amber : C.red, jit = hitT > 0 ? 6 : tier === 2 ? 1.5 : 0;
+      const x = 6 + (R() - 0.5) * jit, y = 6 + (R() - 0.5) * jit * 0.4, fs = 46, tw = 98, w = fs + tw + 14, h = fs + 6;
+      ctx.fillStyle = tier === 2 ? "rgba(" + Math.round(26 + pulse * 34) + ",5,5,0.94)" : tier === 1 ? "rgba(24,17,4,0.93)" : "rgba(8,8,8,0.92)"; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = hitT > 0 || tier === 2 ? C.red : tier === 1 ? C.amber : "rgba(255,255,255,0.22)"; ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, w, h);
+      drawFace(ctx, BA.face || defaultFace(), x + 3, y + 3, fs, { dmg: Math.max(1 - S.hp / 100, hitT > 0 ? 0.9 : 0) });
+      const tx = x + fs + 9;
+      ctx.font = "700 10px " + BA.FONT; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = C.text;
+      ctx.fillText(S.name.replace("아스트로넛 ", "").slice(0, 8), tx, y + 11);
+      ctx.textAlign = "right"; ctx.fillStyle = col; ctx.fillText(String(Math.round(shownHp)).padStart(3, "0"), tx + tw, y + 11);
+      for (let i = 0; i < 10; i++) { ctx.fillStyle = shownHp / 10 > i + 0.05 ? col : "rgba(255,255,255,0.12)"; ctx.fillRect(tx + i * (tw / 10), y + 21, tw / 10 - 2, 6); }
+      ctx.font = "9px " + BA.FONT; ctx.textAlign = "left"; ctx.fillStyle = tier === 0 ? C.green : col;
+      if (tier < 2 || pulse > 0.35) ctx.fillText((tier === 0 ? "♥ " : tier === 1 ? "△ " : "✕ ") + Vital.state() + " · " + BA.D.name, tx, y + 38);
+      if (S.hp < 34 && !BA.dead) { beatT -= dt; if (beatT <= 0) { beatT = S.hp < 15 ? 0.5 : 0.8; Snd.blip(58, 0.14, "sine", 0.2, 40, false); } }
+      return;
+    }
     const fs = Math.round(84 * U), pad = 8, tw = Math.round(176 * U);
     const jit = hitT > 0 ? 10 : tier === 2 ? 2.5 : 0;
     const w = fs + tw + pad * 3, h = fs + pad * 2, x = 14 + (R() - 0.5) * jit, y = H - 48 - h - 10 + (R() - 0.5) * jit * 0.4;

@@ -157,7 +157,9 @@
       S.recipe = BA.makeRecipe(S);
       const x = BA.expandRecipe(S.recipe);
       const parts = [x.base.flours.map((f) => f[0]).join("+"), "수화율 " + x.hyd + "%", "르뱅 " + x.lev + "%", (x.adds.map((a) => a.name).join(" + ") || "부재료 없음"), x.bulk + "h @ " + S.recipe.t + "°C"];
-      this.y = parts.map((label, i) => ({ label, x: W * (0.16 + i * 0.17), by: H * (0.34 + (i % 2) * 0.14), p: i * 1.3, got: 0 }));
+      this.y = parts.map((label, i) => BA.mobile
+        ? { label, x: W * (i === 4 ? 0.5 : 0.27 + (i % 2) * 0.46), by: H * (0.24 + Math.floor(i / 2) * 0.16), p: i * 1.3, got: 0 }      // 핸드폰 — 두 줄씩
+        : { label, x: W * (0.16 + i * 0.17), by: H * (0.34 + (i % 2) * 0.14), p: i * 1.3, got: 0 });
       this.n = 0; this.t = 0; this.fin = 0;
       Snd.drone(110, 0.04, 700);
       say("효모가 선물을 준비했습니다. 초록빛 효모에게서 레시피 조각을 받으세요.");
@@ -351,7 +353,7 @@
         const sh = viewH * viewH / fullH;
         ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(x + w + 10, top, 3, viewH);
         ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.fillRect(x + w + 10, top + (viewH - sh) * this.scroll / maxS, 3, sh);
-        if (ready) T("휠 · 드래그로 스크롤", x + w + 12, top + viewH + 12, { size: 9, align: "right", color: C.ghost });
+        if (ready) T(BA.touch ? "위아래로 끌어 스크롤" : "휠 · 드래그로 스크롤", x + w + 12, top + viewH + 12, { size: 9, align: "right", color: C.ghost });
       }
       const by = H - 48 - 38;
       if (ready) {

@@ -307,7 +307,7 @@
     },
     geom() {
       const { W, H } = BA;
-      const h = Math.min(H * 0.48, W * 0.44), cx = W / 2, cy = H * 0.5;
+      const h = Math.min(H * 0.48, W * (BA.mobile ? 0.78 : 0.44)), cx = W / 2, cy = H * 0.5;
       return { h, cx, cy, scale: h * 0.78, bot: cy + h / 2, top: cy - h / 2 };
     },
     update(dt) {
@@ -423,8 +423,8 @@
         }
         if (!this.touched) {
           const a = 0.6 + 0.4 * Math.sin(time * 3), hand = this.handOnly || (!this.mouseOnly && BA.Hands && BA.Hands.on);
-          T(hand ? "① 카메라에 손을 보이고 좌우로 벌렸다 좁혔다 — 손 사이 간격이 그릇의 폭" : "① 점토 옆에서 마우스를 누른 채 위아래로 천천히", W / 2, g.bot + 40 * U, { size: 14, bold: true, alpha: a });
-          T(hand ? "② 손 높이 = 빚는 높이 (한 손이면 중심에서의 거리 = 폭)   ③ 엄지+검지 = 정밀 · 손을 내리면 쉼" : "② 중심에서 멀어지면 넓어지고, 가까우면 좁아진다   ③ 마우스 휠 = 손 넓이", W / 2, g.bot + 60 * U, { size: 11, color: C.dim });
+          T(hand ? "① 카메라에 손을 보이고 좌우로 벌렸다 좁혔다 — 손 사이 간격이 그릇의 폭" : "① 점토 옆에서 마우스를 누른 채 위아래로 천천히", W / 2, g.bot + (BA.mobile ? 74 : 40) * U, { size: 14, bold: true, alpha: a });
+          T(hand ? "② 손 높이 = 빚는 높이 (한 손이면 중심에서의 거리 = 폭)   ③ 엄지+검지 = 정밀 · 손을 내리면 쉼" : "② 중심에서 멀어지면 넓어지고, 가까우면 좁아진다   ③ 마우스 휠 = 손 넓이", W / 2, g.bot + (BA.mobile ? 104 : 60) * U, { size: 11, color: C.dim });
         }
         this.wasHot = false;
         const by2 = H - 84;

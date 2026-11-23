@@ -275,7 +275,7 @@
       BA.stars.draw(0.15, 0, 0.3);
       T("PAGE 7 — 나만의 빵", W / 2, 96, { size: 13, color: C.dim });
       // 귀환 — 착륙한 우주선에서 탑승자가 걸어 나와 오븐 곁에 선다. 빵이 나오면 뛴다
-      {
+      if (!(BA.mobile && this.phase === "reveal")) {      // 핸드폰에서는 빵이 화면을 다 쓰므로 빵이 나온 뒤엔 생략
         const reveal = this.phase === "reveal", as = Math.max(3, Math.round(4 * U)), ss = Math.max(2, Math.round(3 * U));
         const ground = reveal ? H * 0.5 : g.oy + g.oh + 10 * U;
         const left = reveal ? W / 2 - Math.min(380 * U, W * 0.62) / 2 : g.ox;
@@ -357,13 +357,13 @@
             this.makeBlob();
           }
           if (Btn("엔딩 크레딧 ▶", W / 2 + 120 * U, y1, { size: 12 })) BA.next();
-          const star = BA.hardClear(), off = star ? 110 * U : 0;
+          const star = BA.hardClear(), off = star && !BA.mobile ? 110 * U : 0;
           if (Btn(this.sending ? "보내는 중…" : "[ 이메일로 사진 보내기 ]", W / 2 - 80 * U - off, y2, { size: 13, color: C.green })) this.send();
           if (Btn("JPG 저장", W / 2 + 130 * U - off, y2, { size: 12 })) this.save();
           if (star) {
             T("★ 어려움 모드 성공 ★", W / 2, 96 + 26 * U, { size: 16, bold: true, color: C.amber });
             T("이메일을 적고 [제작자에게 알리기]를 누르면, 그 주소와 빵 사진이 제작자에게 전달되어 축하 연락을 받습니다.", W / 2, 96 + 48 * U, { size: 10, color: C.dim });
-            if (Btn(this.told ? "✓ 제작자에게 전달됨" : "[ ★ 제작자에게 알리기 ]", W / 2 + 190 * U, y2, { size: 13, color: C.amber, disabled: this.told })) this.notify();
+            if (Btn(this.told ? "✓ 제작자에게 전달됨" : "[ ★ 제작자에게 알리기 ]", BA.mobile ? W / 2 : W / 2 + 190 * U, BA.mobile ? y1 - 46 : y2, { size: 13, color: C.amber, disabled: this.told })) this.notify();
           }
           if (this.msgT > 0) T(this.msg, W / 2, y1 - 30 * U, { size: 11, color: C.amber, alpha: this.msgT });
         }
