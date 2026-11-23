@@ -362,7 +362,7 @@
     id: "credits", mood: "gift", green: true, hint: "효모 승무원들이 지나갑니다",
     enter() {
       const { W, H } = BA;
-      const roster = [{ role: "ASTRONAUT", name: "[ " + BA.S.name + " ]", g: true, me: true }, { role: "ASTRONAUT", name: "[ 아스트로넛 승협 ]", g: true }]
+      const roster = [{ role: "ASTRONAUT", name: "[ " + BA.S.name + " ]", g: true, me: true }, { role: "ASTRONAUT", name: "[ 아스트로넛 승협 ]", g: true }, { role: "ASTRONAUT", name: "[ 아스트로넛 여가은 ]", g: true }]
         .concat(ROLES.map((role) => ({ role, name: yid() })));
       this.y = roster.map((c, i) => ({
         ...c, x: W * 0.1 + i * Math.max(190, W * 0.17), y: 150 + R() * Math.max(60, H - 400),
