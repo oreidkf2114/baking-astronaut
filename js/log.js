@@ -5,7 +5,7 @@
 
 (() => {
   "use strict";
-  const KEY = "ba_players_v1", url = String((BA.CONFIG && BA.CONFIG.endpoint) || "").trim();
+  const KEY = "ba_players_v2", url = String((BA.CONFIG && BA.CONFIG.endpoint) || "").trim();
   const clean = (v, n) => String(v == null ? "" : v).replace(/[\r\n\t]+/g, " ").slice(0, n);
   const entry = (p) => ({ ts: Number(p && p.ts) || 0, n: clean(p && p.n, 24), c: clean(p && p.c, 6), r: clean(p && p.r, 40), m: clean(p && p.m, 8) });
   const b64 = (blob) => new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1]); fr.onerror = no; fr.readAsDataURL(blob); });
